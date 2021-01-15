@@ -1,12 +1,15 @@
 #include "extensions/filters/network/mysql_proxy/mysql_filter.h"
 
+#include "envoy/buffer/buffer.h"
 #include "envoy/config/core/v3/base.pb.h"
 
 #include "common/buffer/buffer_impl.h"
 #include "common/common/assert.h"
 #include "common/common/logger.h"
 
+#include "extensions/filters/network/mysql_proxy/mysql_utils.h"
 #include "extensions/filters/network/well_known_names.h"
+#include "source/extensions/filters/network/mysql_proxy/_virtual_includes/codec_lib/extensions/filters/network/mysql_proxy/mysql_codec.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -25,20 +28,14 @@ void MySQLFilter::initializeReadFilterCallbacks(Network::ReadFilterCallbacks& ca
 Network::FilterStatus MySQLFilter::onData(Buffer::Instance& data, bool) {
   // Safety measure just to make sure that if we have a decoding error we keep going and lose stats.
   // This can be removed once we are more confident of this code.
-  if (sniffing_) {
-    read_buffer_.add(data);
-    doDecode(read_buffer_);
-  }
+  doDecode(data);
   return Network::FilterStatus::Continue;
 }
 
 Network::FilterStatus MySQLFilter::onWrite(Buffer::Instance& data, bool) {
   // Safety measure just to make sure that if we have a decoding error we keep going and lose stats.
   // This can be removed once we are more confident of this code.
-  if (sniffing_) {
-    write_buffer_.add(data);
-    doDecode(write_buffer_);
-  }
+  doDecode(data);
   return Network::FilterStatus::Continue;
 }
 
@@ -60,8 +57,8 @@ void MySQLFilter::doDecode(Buffer::Instance& buffer) {
     ENVOY_LOG(info, "mysql_proxy: decoding error: {}", e.what());
     config_->stats_.decoder_errors_.inc();
     sniffing_ = false;
-    read_buffer_.drain(read_buffer_.length());
-    write_buffer_.drain(write_buffer_.length());
+    // read_buffer_.drain(read_buffer_.length());
+    // write_buffer_.drain(write_buffer_.length());
   }
 }
 
@@ -81,13 +78,55 @@ void MySQLFilter::onClientLogin(ClientLogin& client_login) {
   if (client_login.isSSLRequest()) {
     config_->stats_.upgraded_to_ssl_.inc();
   }
+  // send to server auth info
+  auto username = config_->getDownstreamAuthUsername();
+  auto password = config_->getDownstreamAuthPassword();
+  if (username != client_login.getUsername()) {
+    connect_allowed_ = false;
+    onAuthFailure("username is not match");
+    return;
+  }
+
+  client_login.setUsername(username);
+  downsteram_auth_resp_ = client_login.getAuthResp();
+  // TODO(qinggniq) write own auth resp to upstream
+  std::string authResp = "";
+  client_login.setAuthResp(authResp);
+
+  client_->makeRequest(client_login);
 }
 
+void MySQLFilter::onAuthFailure(std::string&& reason) {
+  client_->close();
+  Buffer::OwnedImpl buffer;
+  BufferHelper::addUint8(buffer, MYSQL_RESP_ERR);
+  BufferHelper::addUint16(buffer, MYSQL_CR_AUTH_PLUGIN_ERR);
+  BufferHelper::addString(buffer, std::move(reason));
+  writeDownstream(buffer);
+}
+
+std::string MySQLFilter::scramAuth() {}
+
 void MySQLFilter::onClientLoginResponse(ClientLoginResponse& client_login_resp) {
+  // Auth Ok for upstream, now valid the downstream passowrd
+  if (client_login_resp.getRespCode() == MYSQL_RESP_OK) {
+    // use auth method to
+    if (downsteram_auth_resp_ != scramAuth()) {
+      config_->stats_.login_failures_.inc();
+      onAuthFailure("auth failed");
+    }
+  }
   if (client_login_resp.getRespCode() == MYSQL_RESP_AUTH_SWITCH) {
     config_->stats_.auth_switch_request_.inc();
-  } else if (client_login_resp.getRespCode() == MYSQL_RESP_ERR) {
+    Buffer::OwnedImpl buffer;
+    client_login_resp.encode(buffer);
+    writeDownstream(buffer);
+    return;
+  }
+  if (client_login_resp.getRespCode() == MYSQL_RESP_ERR) {
     config_->stats_.login_failures_.inc();
+    ENVOY_LOG(error, "can not connect to upstream cluster");
+    onAuthFailure("proxy failed to connect to upstream server");
   }
 }
 
@@ -126,7 +165,23 @@ void MySQLFilter::onCommand(Command& command) {
 
 Network::FilterStatus MySQLFilter::onNewConnection() {
   config_->stats_.sessions_.inc();
+  callbacks_->connection().noDelay(true);
+  client_->connect();
   return Network::FilterStatus::Continue;
+}
+
+void MySQLFilter::writeDownstream(Buffer::Instance& data) {
+  callbacks_->connection().write(data, false);
+}
+
+void MySQLFilter::onServerGreeting(ServerGreeting& sg) {
+  Buffer::OwnedImpl buffer;
+  seed_ = sg.getSalt();
+  // 1. 如果 server 是5.5以上那么打印一条日志
+  // 2. 根据 protocol 的 version 确定加密方式
+  // 3. 存储 server 的 cap 位
+  sg.encode(buffer);
+  sg.getProtocol() writeDownstream(buffer);
 }
 
 } // namespace MySQLProxy

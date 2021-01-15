@@ -1,5 +1,6 @@
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
 
+#include "envoy/buffer/buffer.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
 
@@ -58,16 +59,12 @@ int ClientLoginResponse::parseMessage(Buffer::Instance& buffer, uint32_t) {
   return MYSQL_SUCCESS;
 }
 
-std::string ClientLoginResponse::encode() {
-  Buffer::InstancePtr buffer(new Buffer::OwnedImpl());
-  BufferHelper::addUint8(*buffer, resp_code_);
-  BufferHelper::addUint8(*buffer, affected_rows_);
-  BufferHelper::addUint8(*buffer, last_insert_id_);
-  BufferHelper::addUint16(*buffer, server_status_);
-  BufferHelper::addUint16(*buffer, warnings_);
-
-  std::string e_string = buffer->toString();
-  return e_string;
+void ClientLoginResponse::encode(Buffer::Instance& out) {
+  BufferHelper::addUint8(out, resp_code_);
+  BufferHelper::addUint8(out, affected_rows_);
+  BufferHelper::addUint8(out, last_insert_id_);
+  BufferHelper::addUint16(out, server_status_);
+  BufferHelper::addUint16(out, warnings_);
 }
 
 } // namespace MySQLProxy

@@ -1,4 +1,5 @@
 #pragma once
+#include <bits/stdint-uintn.h>
 #include <cstdint>
 
 #include "envoy/common/platform.h"
@@ -41,6 +42,27 @@ public:
   static int peekUint32(Buffer::Instance& buffer, uint32_t& val);
   static void consumeHdr(Buffer::Instance& buffer);
   static int peekHdr(Buffer::Instance& buffer, uint32_t& len, uint8_t& seq);
+};
+
+/**
+ * MySQL auth method.
+ */
+enum AuthMethod {
+  OldPassword,
+  NativePassword,
+  PluginAuth,
+};
+
+/**
+ * Auth helpers for auth MySQL client and server.
+ * Now MySQL Proxy only support OldPassword and NativePassword auth method.
+ */
+class AuthHelper : public Logger::Loggable<Logger::Id::filter> {
+  static AuthMethod authMethod(uint16_t cap, uint16_t ext_cap);
+  static bool oldPasswordAuth(const std::string& password, const std::string& seed,
+                              const std::string& salt);
+  static bool nativePasswordAuth(const std::string& password, const std::string& seed,
+                                 const std::string& salt);
 };
 
 } // namespace MySQLProxy

@@ -1,5 +1,6 @@
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin.h"
 
+#include "envoy/buffer/buffer.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
 
@@ -41,7 +42,7 @@ bool ClientLogin::isClientAuthLenClData() const {
 }
 
 bool ClientLogin::isClientSecureConnection() const {
-  return extended_client_cap_ & MYSQL_EXT_CL_SECURE_CONNECTION;
+  return client_cap_ & MYSQL_CLIENT_SECURE_CONNECTION;
 }
 
 int ClientLogin::parseMessage(Buffer::Instance& buffer, uint32_t) {
@@ -122,32 +123,29 @@ int ClientLogin::parseMessage(Buffer::Instance& buffer, uint32_t) {
   return MYSQL_SUCCESS;
 }
 
-std::string ClientLogin::encode() {
+void ClientLogin::encode(Buffer::Instance& out) {
   uint8_t enc_end_string = 0;
-  Buffer::InstancePtr buffer(new Buffer::OwnedImpl());
-  BufferHelper::addUint16(*buffer, client_cap_);
-  BufferHelper::addUint16(*buffer, extended_client_cap_);
-  BufferHelper::addUint32(*buffer, max_packet_);
-  BufferHelper::addUint8(*buffer, charset_);
+  BufferHelper::addUint16(out, client_cap_);
+  BufferHelper::addUint16(out, extended_client_cap_);
+  BufferHelper::addUint32(out, max_packet_);
+  BufferHelper::addUint8(out, charset_);
   for (int idx = 0; idx < UNSET_BYTES; idx++) {
-    BufferHelper::addUint8(*buffer, 0);
+    BufferHelper::addUint8(out, 0);
   }
-  BufferHelper::addString(*buffer, username_);
-  BufferHelper::addUint8(*buffer, enc_end_string);
+  BufferHelper::addString(out, username_);
+  BufferHelper::addUint8(out, enc_end_string);
   if ((extended_client_cap_ & MYSQL_EXT_CL_PLG_AUTH_CL_DATA) ||
-      (extended_client_cap_ & MYSQL_EXT_CL_SECURE_CONNECTION)) {
-    BufferHelper::addUint8(*buffer, auth_resp_.length());
-    BufferHelper::addString(*buffer, auth_resp_);
+      (client_cap_ & MYSQL_CLIENT_SECURE_CONNECTION)) {
+    BufferHelper::addUint8(out, auth_resp_.length());
+    BufferHelper::addString(out, auth_resp_);
   } else {
-    BufferHelper::addString(*buffer, auth_resp_);
-    BufferHelper::addUint8(*buffer, enc_end_string);
+    BufferHelper::addString(out, auth_resp_);
+    BufferHelper::addUint8(out, enc_end_string);
   }
   if (client_cap_ & MYSQL_CLIENT_CONNECT_WITH_DB) {
-    BufferHelper::addString(*buffer, db_);
-    BufferHelper::addUint8(*buffer, enc_end_string);
+    BufferHelper::addString(out, db_);
+    BufferHelper::addUint8(out, enc_end_string);
   }
-
-  return buffer->toString();
 }
 
 } // namespace MySQLProxy

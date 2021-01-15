@@ -318,7 +318,8 @@ TEST_F(MySQLCodecTest, MySQLClientLogin41SecureConnEncDec) {
   uint16_t client_capab = 0;
   client_capab |= (MYSQL_CLIENT_CONNECT_WITH_DB | MYSQL_CLIENT_CAPAB_41VS320);
   mysql_clogin_encode.setClientCap(client_capab);
-  mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_SECURE_CONNECTION);
+  mysql_clogin_encode.setClientCap(MYSQL_CLIENT_SECURE_CONNECTION);
+  // mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_SECURE_CONNECTION);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
   std::string user("user1");
@@ -646,8 +647,10 @@ TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteAuthPasswd) {
  */
 TEST_F(MySQLCodecTest, MySQLClientSSLLoginIncompleteAuthLen) {
   ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(0);
-  mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_SECURE_CONNECTION);
+  // mysql_clogin_encode.setClientCap(0);
+  // mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_SECURE_CONNECTION);
+  mysql_clogin_encode.setClientCap(MYSQL_CLIENT_SECURE_CONNECTION);
+  mysql_clogin_encode.setExtendedClientCap(0);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
   std::string user("user1");
@@ -677,8 +680,10 @@ TEST_F(MySQLCodecTest, MySQLClientSSLLoginIncompleteAuthLen) {
  */
 TEST_F(MySQLCodecTest, MySQLClientSSLLoginIncompleteAuthPasswd) {
   ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(0);
-  mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_SECURE_CONNECTION);
+  // mysql_clogin_encode.setClientCap(0);
+  // mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_SECURE_CONNECTION);
+  mysql_clogin_encode.setClientCap(MYSQL_CLIENT_SECURE_CONNECTION);
+  mysql_clogin_encode.setExtendedClientCap(0);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
   std::string user("user1");

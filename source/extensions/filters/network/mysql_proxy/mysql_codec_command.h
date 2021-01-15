@@ -36,7 +36,7 @@ public:
 
   // MySQLCodec
   int parseMessage(Buffer::Instance&, uint32_t len) override;
-  std::string encode() override;
+  void encode(Buffer::Instance&) override;
 
   Cmd parseCmd(Buffer::Instance& data);
   Cmd getCmd() const { return cmd_; }

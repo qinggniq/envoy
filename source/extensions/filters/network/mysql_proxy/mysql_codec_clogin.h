@@ -13,7 +13,7 @@ class ClientLogin : public MySQLCodec {
 public:
   // MySQLCodec
   int parseMessage(Buffer::Instance& buffer, uint32_t len) override;
-  std::string encode() override;
+  void encode(Buffer::Instance&) override;
 
   int getClientCap() const { return client_cap_; }
   int getExtendedClientCap() const { return extended_client_cap_; }

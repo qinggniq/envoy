@@ -1,6 +1,8 @@
 #pragma once
+#include <bits/stdint-uintn.h>
 #include <cstdint>
 
+#include "envoy/buffer/buffer.h"
 #include "envoy/common/platform.h"
 
 #include "common/buffer/buffer_impl.h"
@@ -75,9 +77,12 @@ constexpr uint8_t MYSQL_UNSET_SIZE = 10;
 constexpr uint16_t MYSQL_CLIENT_CONNECT_WITH_DB = 0x0008;
 constexpr uint16_t MYSQL_CLIENT_CAPAB_41VS320 = 0x0200;
 constexpr uint16_t MYSQL_CLIENT_CAPAB_SSL = 0x0800;
+constexpr uint16_t MYSQL_CLIENT_SECURE_CONNECTION = 0x8000;
 constexpr uint16_t MYSQL_EXT_CLIENT_CAPAB = 0x0300;
 constexpr uint16_t MYSQL_EXT_CL_PLG_AUTH_CL_DATA = 0x0020;
-constexpr uint16_t MYSQL_EXT_CL_SECURE_CONNECTION = 0x8000;
+// constexpr uint16_t MYSQL_EXT_CL_SECURE_CONNECTION = 0x8000;
+// TODO
+constexpr uint16_t MYSQL_EXT_CL_PLUGIN_AUTH = 0x8;
 constexpr uint32_t MYSQL_MAX_PACKET = 0x00000001;
 constexpr uint8_t MYSQL_CHARSET = 0x21;
 
@@ -89,6 +94,9 @@ constexpr uint8_t LENENCODINT_8BYTES = 0xfe;
 constexpr int MYSQL_SUCCESS = 0;
 constexpr int MYSQL_FAILURE = -1;
 constexpr char MYSQL_STR_END = '\0';
+
+// error code
+constexpr uint16_t MYSQL_CR_AUTH_PLUGIN_ERR = 2061;
 
 class MySQLCodec : public Logger::Loggable<Logger::Id::filter> {
 public:
@@ -104,7 +112,7 @@ public:
     return parseMessage(data, len);
   }
 
-  virtual std::string encode() PURE;
+  virtual void encode(Buffer::Instance& out) PURE;
 
 protected:
   virtual int parseMessage(Buffer::Instance& data, uint32_t len) PURE;

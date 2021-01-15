@@ -1,4 +1,8 @@
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
+#include "source/extensions/filters/network/mysql_proxy/_virtual_includes/codec_lib/extensions/filters/network/mysql_proxy/mysql_codec.h"
+#include <bits/stdint-uintn.h>
+#include <openssl/sha.h>
+#include <openssl/digest.h>
 
 namespace Envoy {
 namespace Extensions {
@@ -152,6 +156,59 @@ int BufferHelper::peekHdr(Buffer::Instance& buffer, uint32_t& len, uint8_t& seq)
   len = val & MYSQL_HDR_PKT_SIZE_MASK;
   ENVOY_LOG(trace, "mysql_proxy: MYSQL-hdrseq {}, len {}", seq, len);
   return MYSQL_SUCCESS;
+}
+
+AuthMethod AuthHelper::authMethod(uint16_t cap, uint16_t ext_cap) {
+  /*
+   * https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase.html
+   */
+  bool v41 = cap & MYSQL_CLIENT_CAPAB_41VS320;
+  bool sconn = cap & MYSQL_CLIENT_SECURE_CONNECTION;
+  bool plugin = ext_cap & MYSQL_EXT_CL_PLUGIN_AUTH;
+  if (!v41 || !sconn) {
+    return AuthMethod::OldPassword;
+  }
+  if (v41 && sconn && !plugin) {
+    return AuthMethod::NativePassword;
+  }
+  return AuthMethod::PluginAuth;
+}
+
+bool AuthHelpr::oldPasswordAuth(const std::string& password, const std::string& seed,
+                                const std::string& salt) {
+  // hashstage1 = sha(password)
+  std::vector<uint8_t> hashstage1(SHA_DIGEST_LENGTH);
+  bssl::ScopedEVP_MD_CTX ctx;
+  auto rc = EVP_DigestInit(ctx.get(), EVP_sha1());
+  RELEASE_ASSERT(rc == 1, "Failed to init digest context");
+  rc = EVP_DigestUpdate(ctx.get(), password.data(), password.size());
+  RELEASE_ASSERT(rc == 1, "Failed to update digest");
+  rc = EVP_DigestFinal(ctx.get(), hashstage1.data(), nullptr);
+  RELEASE_ASSERT(rc == 1, "Failed to finalize digest");
+
+  // hashstage2 = sha(hashstage1)
+  rc = EVP_MD_CTX_reset(ctx.get());
+  RELEASE_ASSERT(rc == 1, "Failed to reset digest context");
+  std::vector<uint8_t> hashstage2(SHA_DIGEST_LENGTH);
+  rc = EVP_DigestUpdate(ctx.get(), hashstage1.data(), hashstage1.size());
+  RELEASE_ASSERT(rc == 1, "Failed to update digest");
+  rc = EVP_DigestFinal(ctx.get(), hashstage2.data(), nullptr);
+  RELEASE_ASSERT(rc == 1, "Failed to finalize digest");
+  rc = EVP_MD_CTX_reset(ctx.get());
+  RELEASE_ASSERT(rc == 1, "Failed to reset digest context");
+
+  // toBeXored = sha(hashstage1, seed)
+  std::vector<uint8_t> to_be_xored(SHA_DIGEST_LENGTH);
+  rc = EVP_DigestUpdate(ctx.get(), seed.data(), seed.size());
+  RELEASE_ASSERT(rc == 1, "Failed to update digest");
+  rc = EVP_DigestUpdate(ctx.get(), hashstage2.data(), hashstage2.size());
+  RELEASE_ASSERT(rc == 1, "Failed to update digest");
+  rc = EVP_DigestFinal(ctx.get(), to_be_xored.data(), nullptr);
+  RELEASE_ASSERT(rc == 1, "Failed to finalize digest");
+
+  for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
+    to_be_xored[i] = to_be_xored[i] ^ hashstage1[i];
+  }
 }
 
 } // namespace MySQLProxy

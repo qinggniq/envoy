@@ -17,6 +17,7 @@
 #include "extensions/filters/network/mysql_proxy/mysql_codec_switch_resp.h"
 #include "extensions/filters/network/mysql_proxy/mysql_decoder.h"
 #include "extensions/filters/network/mysql_proxy/mysql_session.h"
+#include "extensions/filters/network/mysql_proxy/mysql_client.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -53,8 +54,16 @@ public:
 
   const MySQLProxyStats& stats() { return stats_; }
 
+  std::string getDownstreamAuthPassword() const { return downstream_auth_password_; }
+  std::string getDownstreamAuthUsername() const { return downstream_auth_username_; }
+  std::string getUpstreamAuthPassword() const { return upstream_auth_password_; }
+  std::string getUpstreamAuthUsername() const { return upstream_auth_username_; }
   Stats::Scope& scope_;
   MySQLProxyStats stats_;
+  std::string downstream_auth_username_;
+  std::string downstream_auth_password_;
+  std::string upstream_auth_username_;
+  std::string upstream_auth_password_;
 
 private:
   MySQLProxyStats generateStats(const std::string& prefix, Stats::Scope& scope) {
@@ -83,25 +92,39 @@ public:
   // MySQLProxy::DecoderCallback
   void onProtocolError() override;
   void onNewMessage(MySQLSession::State state) override;
-  void onServerGreeting(ServerGreeting&) override{};
+  void onServerGreeting(ServerGreeting&) override;
   void onClientLogin(ClientLogin& message) override;
   void onClientLoginResponse(ClientLoginResponse& message) override;
-  void onClientSwitchResponse(ClientSwitchResponse&) override{};
+  void onClientSwitchResponse(ClientSwitchResponse&) override;
   void onMoreClientLoginResponse(ClientLoginResponse& message) override;
   void onCommand(Command& message) override;
-  void onCommandResponse(CommandResponse&) override{};
+  void onCommandResponse(CommandResponse&) override;
 
+  void onAuthFailure(std::string&&);
+  std::string scramAuth();
   void doDecode(Buffer::Instance& buffer);
   DecoderPtr createDecoder(DecoderCallbacks& callbacks);
   MySQLSession& getSession() { return decoder_->getSession(); }
 
+  void writeDownstream(Buffer::Instance& data);
+
 private:
+  ClientPtr client_;
   Network::ReadFilterCallbacks* read_callbacks_{};
   MySQLFilterConfigSharedPtr config_;
-  Buffer::OwnedImpl read_buffer_;
-  Buffer::OwnedImpl write_buffer_;
+  Network::ReadFilterCallbacks* callbacks_{};
+  // Buffer::OwnedImpl read_buffer_;
+  // Buffer::OwnedImpl write_buffer_;
   std::unique_ptr<Decoder> decoder_;
+  std::string seed_;
+  std::string downsteram_auth_resp_;
+  enum AuthMethod {
+    OldPassword,
+    NativePassword,
+  };
+  AuthMethod auth_method_{OldPassword};
   bool sniffing_{true};
+  bool connect_allowed_{true};
 };
 
 } // namespace MySQLProxy

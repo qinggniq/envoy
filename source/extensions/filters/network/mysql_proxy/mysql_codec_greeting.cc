@@ -1,5 +1,6 @@
 #include "extensions/filters/network/mysql_proxy/mysql_codec_greeting.h"
 
+#include "envoy/buffer/buffer.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
 
@@ -84,21 +85,18 @@ int ServerGreeting::parseMessage(Buffer::Instance& buffer, uint32_t) {
   return MYSQL_SUCCESS;
 }
 
-std::string ServerGreeting::encode() {
+void ServerGreeting::encode(Buffer::Instance& out) {
   uint8_t enc_end_string = 0;
-  Buffer::InstancePtr buffer(new Buffer::OwnedImpl());
-  BufferHelper::addUint8(*buffer, protocol_);
-  BufferHelper::addString(*buffer, version_);
-  BufferHelper::addUint8(*buffer, enc_end_string);
-  BufferHelper::addUint32(*buffer, thread_id_);
-  BufferHelper::addString(*buffer, salt_);
-  BufferHelper::addUint8(*buffer, enc_end_string);
-  BufferHelper::addUint16(*buffer, server_cap_);
-  BufferHelper::addUint8(*buffer, server_language_);
-  BufferHelper::addUint16(*buffer, server_status_);
-  BufferHelper::addUint16(*buffer, ext_server_cap_);
-
-  return buffer->toString();
+  BufferHelper::addUint8(out, protocol_);
+  BufferHelper::addString(out, version_);
+  BufferHelper::addUint8(out, enc_end_string);
+  BufferHelper::addUint32(out, thread_id_);
+  BufferHelper::addString(out, salt_);
+  BufferHelper::addUint8(out, enc_end_string);
+  BufferHelper::addUint16(out, server_cap_);
+  BufferHelper::addUint8(out, server_language_);
+  BufferHelper::addUint16(out, server_status_);
+  BufferHelper::addUint16(out, ext_server_cap_);
 }
 
 } // namespace MySQLProxy
