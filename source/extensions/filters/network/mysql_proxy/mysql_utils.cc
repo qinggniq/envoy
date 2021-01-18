@@ -1,8 +1,7 @@
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
 #include "source/extensions/filters/network/mysql_proxy/_virtual_includes/codec_lib/extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include <bits/stdint-uintn.h>
-#include <openssl/sha.h>
-#include <openssl/digest.h>
+#include <iterator>
 
 namespace Envoy {
 namespace Extensions {
@@ -174,12 +173,21 @@ AuthMethod AuthHelper::authMethod(uint16_t cap, uint16_t ext_cap) {
   return AuthMethod::PluginAuth;
 }
 
-bool AuthHelpr::oldPasswordAuth(const std::string& password, const std::string& seed,
-                                const std::string& salt) {
+std::string AuthHelper::oldPasswordSignature(const std::string& password, const std::string& seed) {
+  return signature<EVP_sha1, SHA_DIGEST_LENGTH>(password, seed);
+}
+
+std::string AuthHelper::nativePasswordSignature(const std::string& password,
+                                                const std::string& seed) {
+  return signature<EVP_sha256, SHA256_DIGEST_LENGTH>(password, seed);
+}
+
+template <const EVP_MD* (*ShaType)(), size_t DigestSize>
+std::string AuthHelper::signature(const std::string& password, const std::string& seed) {
   // hashstage1 = sha(password)
-  std::vector<uint8_t> hashstage1(SHA_DIGEST_LENGTH);
+  std::vector<uint8_t> hashstage1(DigestSize);
   bssl::ScopedEVP_MD_CTX ctx;
-  auto rc = EVP_DigestInit(ctx.get(), EVP_sha1());
+  auto rc = EVP_DigestInit(ctx.get(), ShaType());
   RELEASE_ASSERT(rc == 1, "Failed to init digest context");
   rc = EVP_DigestUpdate(ctx.get(), password.data(), password.size());
   RELEASE_ASSERT(rc == 1, "Failed to update digest");
@@ -189,7 +197,7 @@ bool AuthHelpr::oldPasswordAuth(const std::string& password, const std::string& 
   // hashstage2 = sha(hashstage1)
   rc = EVP_MD_CTX_reset(ctx.get());
   RELEASE_ASSERT(rc == 1, "Failed to reset digest context");
-  std::vector<uint8_t> hashstage2(SHA_DIGEST_LENGTH);
+  std::vector<uint8_t> hashstage2(DigestSize);
   rc = EVP_DigestUpdate(ctx.get(), hashstage1.data(), hashstage1.size());
   RELEASE_ASSERT(rc == 1, "Failed to update digest");
   rc = EVP_DigestFinal(ctx.get(), hashstage2.data(), nullptr);
@@ -198,7 +206,7 @@ bool AuthHelpr::oldPasswordAuth(const std::string& password, const std::string& 
   RELEASE_ASSERT(rc == 1, "Failed to reset digest context");
 
   // toBeXored = sha(hashstage1, seed)
-  std::vector<uint8_t> to_be_xored(SHA_DIGEST_LENGTH);
+  std::vector<uint8_t> to_be_xored(DigestSize);
   rc = EVP_DigestUpdate(ctx.get(), seed.data(), seed.size());
   RELEASE_ASSERT(rc == 1, "Failed to update digest");
   rc = EVP_DigestUpdate(ctx.get(), hashstage2.data(), hashstage2.size());
@@ -209,8 +217,94 @@ bool AuthHelpr::oldPasswordAuth(const std::string& password, const std::string& 
   for (int i = 0; i < SHA_DIGEST_LENGTH; i++) {
     to_be_xored[i] = to_be_xored[i] ^ hashstage1[i];
   }
+  return std::string(to_be_xored.begin(), to_be_xored.end());
 }
 
+std::string AuthHelper::oldPasswordHashHash(const std::string& password) {
+  return passwordHashHash<EVP_sha1, SHA_DIGEST_LENGTH>(password);
+}
+
+std::string AuthHelper::nativePasswordHashHash(const std::string& password) {
+  return passwordHashHash<EVP_sha256, SHA256_DIGEST_LENGTH>(password);
+}
+
+template <const EVP_MD* (*ShaType)(), size_t DigestSize>
+std::string passwordHashHash(const std::string& password) {
+  // passwordHash = sha(sha(password))
+  std::vector<uint8_t> passwordHash(DigestSize);
+  bssl::ScopedEVP_MD_CTX ctx;
+  auto rc = EVP_DigestInit(ctx.get(), ShaType());
+  RELEASE_ASSERT(rc == 1, "Failed to init digest context");
+  rc = EVP_DigestUpdate(ctx.get(), password.data(), password.size());
+  RELEASE_ASSERT(rc == 1, "Failed to update digest");
+  rc = EVP_DigestFinal(ctx.get(), passwordHash.data(), nullptr);
+  RELEASE_ASSERT(rc == 1, "Failed to finalize digest");
+
+  rc = EVP_MD_CTX_reset(ctx.get());
+  RELEASE_ASSERT(rc == 1, "Failed to reset digest context");
+  rc = EVP_DigestUpdate(ctx.get(), passwordHash.data(), passwordHash.size());
+  RELEASE_ASSERT(rc == 1, "Failed to update digest");
+  rc = EVP_DigestFinal(ctx.get(), passwordHash.data(), nullptr);
+  RELEASE_ASSERT(rc == 1, "Failed to finalize digest");
+  rc = EVP_MD_CTX_reset(ctx.get());
+  RELEASE_ASSERT(rc == 1, "Failed to reset digest context");
+  return std::string(passwordHash.begin(), passwordHash.end());
+}
+
+bool AuthHelper::oldPasswordVerify(const std::string& password_hash, const std::string& seed,
+                                   const std::string sig) {
+  return verify<EVP_sha1, SHA_DIGEST_LENGTH>(password_hash, seed, sig);
+}
+
+bool AuthHelper::nativePasswordVerify(const std::string& password_hash, const std::string& seed,
+                                      const std::string sig) {
+  return verify<EVP_sha256, SHA256_DIGEST_LENGTH>(password_hash, seed, sig);
+}
+
+template <const EVP_MD* (*ShaType)(), size_t DigestSize>
+bool AuthHelper::verify(const std::string& password_hash, const std::string& seed,
+                        const std::string sig) {
+  /*
+   * sig = hash(password) xor hash(seed + hash(hash(password)))
+   * password_hash = hash(hash(password))
+   * so hash(seed + password_hash) xor sig = hash(password)
+   * verify password_hash == hash(hash(password))
+   */
+  if (sig.size() != DigestSize || password_hash.size() != DigestSize) {
+    return false;
+  }
+  std::vector<uint8_t> to_be_xored(DigestSize);
+  bssl::ScopedEVP_MD_CTX ctx;
+  // to_be_xored = hash(seed + password_hash)
+  auto rc = EVP_DigestInit(ctx.get(), ShaType());
+  rc = EVP_DigestUpdate(ctx.get(), seed.data(), seed.size());
+  RELEASE_ASSERT(rc == 1, "Failed to update digest");
+  RELEASE_ASSERT(rc == 1, "Failed to init digest context");
+  rc = EVP_DigestUpdate(ctx.get(), password_hash.data(), password_hash.size());
+  RELEASE_ASSERT(rc == 1, "Failed to update digest");
+  rc = EVP_DigestFinal(ctx.get(), to_be_xored.data(), nullptr);
+  RELEASE_ASSERT(rc == 1, "Failed to finalize digest");
+
+  // to_be_xored = to_be_xored ^ sig == hash(password)
+  for (int i = 0; i < DigestSize; i++) {
+    to_be_xored[i] = to_be_xored[i] ^ sig[i];
+  }
+
+  // to_be_xored = hash(to_be_xored) == hash(hash(password))
+  rc = EVP_MD_CTX_reset(ctx.get());
+  RELEASE_ASSERT(rc == 1, "Failed to reset digest context");
+  rc = EVP_DigestUpdate(ctx.get(), to_be_xored.data(), to_be_xored.size());
+  RELEASE_ASSERT(rc == 1, "Failed to update digest");
+  rc = EVP_DigestFinal(ctx.get(), to_be_xored.data(), nullptr);
+  RELEASE_ASSERT(rc == 1, "Failed to finalize digest");
+
+  for (int i = 0; i < DigestSize; i++) {
+    if (to_be_xored[i] != password_hash[i]) {
+      return false;
+    }
+  }
+  return true;
+}
 } // namespace MySQLProxy
 } // namespace NetworkFilters
 } // namespace Extensions
