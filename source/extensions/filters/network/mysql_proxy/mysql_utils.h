@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <unistd.h>
 
+#include "envoy/buffer/buffer.h"
 #include "envoy/common/platform.h"
 
 #include "common/buffer/buffer_impl.h"
@@ -44,6 +45,7 @@ public:
   static int readBytes(Buffer::Instance& buffer, size_t skip_bytes);
   static int readString(Buffer::Instance& buffer, std::string& str);
   static int readStringBySize(Buffer::Instance& buffer, size_t len, std::string& str);
+  static int readAll(Buffer::Instance& buffer, std::string& str);
   static int peekUint32(Buffer::Instance& buffer, uint32_t& val);
   static void consumeHdr(Buffer::Instance& buffer);
   static int peekHdr(Buffer::Instance& buffer, uint32_t& len, uint8_t& seq);
@@ -63,6 +65,7 @@ enum AuthMethod {
  * Now MySQL Proxy only support OldPassword and NativePassword auth method.
  */
 class AuthHelper : public Logger::Loggable<Logger::Id::filter> {
+public:
   // judge the auth mehod by cap flag
   static AuthMethod authMethod(uint16_t cap, uint16_t ext_cap);
 
@@ -72,30 +75,29 @@ class AuthHelper : public Logger::Loggable<Logger::Id::filter> {
   static std::string oldPasswordHashHash(const std::string& password);
   static std::string nativePasswordHashHash(const std::string& password);
 
-  static bool oldPasswordVerify(const std::string& password_hash, const std::string& seed,
+  static bool oldPasswordVerify(const std::string& password, const std::string& seed,
                                 const std::string sig);
 
-  static bool nativePasswordVerify(const std::string& password_hash, const std::string& seed,
+  static bool nativePasswordVerify(const std::string& password, const std::string& seed,
                                    const std::string sig);
 
 private:
   // client use password and seed cacluate the signature as auth response
-  template <const EVP_MD* (*ShaType)(), size_t DigestSize>
+  template <const EVP_MD* (*ShaType)(), int DigestSize>
   static std::string signature(const std::string& password, const std::string& seed);
   // server use password hash function sha(sha(password)) store into user table
-  template <const EVP_MD* (*ShaType)(), size_t DigestSize>
+  template <const EVP_MD* (*ShaType)(), int DigestSize>
   static std::string passwordHashHash(const std::string& password);
   /*
    * Verify function.
-   * @password_hash: the password hash value stored in user table.
+   * @password: the downstream auth password.
    * @seed: random seed sent by server.
    * @sig: client auth response calculated by @signature
    * return:
    * whether auth success.
    */
-  template <const EVP_MD* (*ShaType)(), size_t DigestSize>
-  static bool verify(const std::string& password_hash, const std::string& seed,
-                     const std::string sig);
+  template <const EVP_MD* (*ShaType)(), int DigestSize>
+  static bool verify(const std::string& password, const std::string& seed, const std::string& sig);
 };
 
 } // namespace MySQLProxy

@@ -1,6 +1,7 @@
 #include "extensions/filters/network/mysql_proxy/mysql_decoder.h"
 
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
+#include <bits/stdint-uintn.h>
 
 namespace Envoy {
 namespace Extensions {

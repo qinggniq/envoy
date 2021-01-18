@@ -7,6 +7,12 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace MySQLProxy {
 
+/*
+ * MySQL Client connecting upstream database.
+ * Sometimes downstream could connect to server without spec db name, the proxy-server connection
+ * info should be determined when downstream real connect. This Client will real connect database
+ * when calling @connect function.
+ */
 class Client : public Event::DeferredDeletable {
 public:
   ~Client() override = default;

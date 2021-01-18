@@ -78,22 +78,55 @@ void MySQLFilter::onClientLogin(ClientLogin& client_login) {
   if (client_login.isSSLRequest()) {
     config_->stats_.upgraded_to_ssl_.inc();
   }
-  // send to server auth info
-  auto username = config_->getDownstreamAuthUsername();
-  auto password = config_->getDownstreamAuthPassword();
-  if (username != client_login.getUsername()) {
-    connect_allowed_ = false;
-    onAuthFailure("username is not match");
-    return;
-  }
 
-  client_login.setUsername(username);
-  downsteram_auth_resp_ = client_login.getAuthResp();
-  // TODO(qinggniq) write own auth resp to upstream
-  std::string authResp = "";
-  client_login.setAuthResp(authResp);
+  auto auth_method =
+      AuthHelper::authMethod(client_login.getClientCap(), client_login.getExtendedClientCap());
+  if (!authed_) {
+    if (!authDownstream(auth_method, client_login.getUsername(), client_login.getAuthResp())) {
+      onAuthFailure("username is not match");
+      return;
+    }
+  }
+  authed_ = true;
+  auto upstream_username = config_->getUpstreamAuthUsername();
+  // send upstream auth info
+  client_login.setUsername(upstream_username);
+  client_login.setAuthResp(authResp(auth_method));
 
   client_->makeRequest(client_login);
+}
+
+std::string MySQLFilter::authResp(AuthMethod method) {
+  switch (method) {
+  case OldPassword:
+    return AuthHelper::oldPasswordSignature(config_->getUpstreamAuthPassword(), seed_);
+  case NativePassword:
+    return AuthHelper::nativePasswordSignature(config_->getUpstreamAuthPassword(), seed_);
+  case PluginAuth:
+    ENVOY_LOG(info, "");
+    return "";
+  }
+}
+
+bool MySQLFilter::authDownstream(AuthMethod method, const std::string& downstream_username,
+                                 const std::string& downstream_auth_resp) {
+  if (downstream_username != config_->getDownstreamAuthUsername()) {
+    return false;
+  }
+  switch (method) {
+  case OldPassword:
+    return AuthHelper::oldPasswordVerify(config_->downstream_auth_password_, seed_,
+                                         downstream_auth_resp);
+    break;
+  case NativePassword:
+    return AuthHelper::nativePasswordVerify(config_->downstream_auth_password_, seed_,
+                                            downstream_auth_resp);
+    break;
+  case PluginAuth:
+    // TODO(qinggniq) log
+    break;
+  }
+  return false;
 }
 
 void MySQLFilter::onAuthFailure(std::string&& reason) {
@@ -105,35 +138,46 @@ void MySQLFilter::onAuthFailure(std::string&& reason) {
   writeDownstream(buffer);
 }
 
-std::string MySQLFilter::scramAuth() {}
-
 void MySQLFilter::onClientLoginResponse(ClientLoginResponse& client_login_resp) {
-  // Auth Ok for upstream, now valid the downstream passowrd
-  if (client_login_resp.getRespCode() == MYSQL_RESP_OK) {
-    // use auth method to
-    if (downsteram_auth_resp_ != scramAuth()) {
-      config_->stats_.login_failures_.inc();
-      onAuthFailure("auth failed");
-    }
-  }
-  if (client_login_resp.getRespCode() == MYSQL_RESP_AUTH_SWITCH) {
+  switch (client_login_resp.getRespCode()) {
+  case MYSQL_RESP_OK:
+    // we auth downstream at @onClientLogin send auth response to downstream at
+    // @onClientLoginResponse or auth at @onClientSwitchResponse send at @onMoreClientLoginResponse,
+    // in this way we can guarantee the message seq
+    writeDownstream(client_login_resp);
+    break;
+  case MYSQL_RESP_AUTH_SWITCH:
     config_->stats_.auth_switch_request_.inc();
-    Buffer::OwnedImpl buffer;
-    client_login_resp.encode(buffer);
-    writeDownstream(buffer);
-    return;
-  }
-  if (client_login_resp.getRespCode() == MYSQL_RESP_ERR) {
+    if (!client_login_resp.isOldAuthSwitchRequest()) {
+      onAuthFailure("proxy cannot support auth plugin");
+      return;
+    }
+    writeDownstream(client_login_resp);
+    break;
+  case MYSQL_RESP_ERR:
     config_->stats_.login_failures_.inc();
     ENVOY_LOG(error, "can not connect to upstream cluster");
     onAuthFailure("proxy failed to connect to upstream server");
+    break;
   }
+}
+void MySQLFilter::onClientSwitchResponse(ClientSwitchResponse& client_switch_resp) {
+  // we have authed downstream at @onClientLogin, so there is not need to auth by another auth
+  // method
+  ASSERT(authed_);
+  // only support oldPasswordAuthSwitch
+  client_switch_resp.setAuthPluginResp(authResp(OldPassword));
+  client_->makeRequest(client_switch_resp);
 }
 
 void MySQLFilter::onMoreClientLoginResponse(ClientLoginResponse& client_login_resp) {
   if (client_login_resp.getRespCode() == MYSQL_RESP_ERR) {
     config_->stats_.login_failures_.inc();
+    onAuthFailure("upstream server auth fail");
   }
+  // authed_ must be true, or the state machine of decoder is broken
+  ASSERT(authed_);
+  writeDownstream(client_login_resp);
 }
 
 void MySQLFilter::onCommand(Command& command) {
@@ -174,14 +218,19 @@ void MySQLFilter::writeDownstream(Buffer::Instance& data) {
   callbacks_->connection().write(data, false);
 }
 
+void MySQLFilter::writeDownstream(MySQLCodec& codec) {
+  Buffer::OwnedImpl buffer;
+  codec.encode(buffer);
+  writeDownstream(buffer);
+}
+
 void MySQLFilter::onServerGreeting(ServerGreeting& sg) {
   Buffer::OwnedImpl buffer;
   seed_ = sg.getSalt();
-  // 1. 如果 server 是5.5以上那么打印一条日志
-  // 2. 根据 protocol 的 version 确定加密方式
-  // 3. 存储 server 的 cap 位
+  upstream_auth_method_ = AuthHelper::authMethod(sg.getServerCap(), sg.getExtServerCap());
+  // TODO(qinggniq) judge the server version, now mysql proxy only support version under 5.5 version
   sg.encode(buffer);
-  sg.getProtocol() writeDownstream(buffer);
+  writeDownstream(buffer);
 }
 
 } // namespace MySQLProxy

@@ -2,6 +2,7 @@
 #include "common/buffer/buffer_impl.h"
 
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
+#include <bits/stdint-uintn.h>
 
 namespace Envoy {
 namespace Extensions {
@@ -14,32 +15,44 @@ public:
   int parseMessage(Buffer::Instance& buffer, uint32_t len) override;
   void encode(Buffer::Instance&) override;
 
-  int getProtocol() const { return protocol_; }
+  uint8_t getProtocol() const { return protocol_; }
   const std::string& getVersion() const { return version_; }
-  int getThreadId() const { return thread_id_; }
-  const std::string& getSalt() const { return salt_; };
-  int getServerCap() const { return server_cap_; }
-  int getServerLanguage() const { return server_language_; }
+  uint32_t getThreadId() const { return thread_id_; }
+  const std::string& getAuthPluginData() const { return auth_plugin_data_; };
+
+  int getServerCharset() const { return server_charset_; }
   int getServerStatus() const { return server_status_; }
-  int getExtServerCap() const { return ext_server_cap_; }
-  void setProtocol(int protocol);
-  void setVersion(std::string& version);
-  void setThreadId(int thread_id);
-  void setSalt(std::string& salt);
-  void setServerCap(int server_cap);
-  void setServerLanguage(int server_language);
-  void setServerStatus(int server_status);
-  void setExtServerCap(int ext_server_cap);
+  uint32_t getServerCap() const { return server_cap_; }
+  uint16_t getBaseServerCap() const { return base_server_cap_; }
+  uint16_t getExtServerCap() const { return ext_server_cap_; }
+  const std::string& getAuthPluginName() const { return auth_plugin_name_; }
+
+  void setProtocol(uint8_t protocol);
+  void setVersion(const std::string& version);
+  void setThreadId(uint32_t thread_id);
+  void setAuthPluginData(const std::string& salt);
+  void setServerCap(uint32_t server_cap);
+  void setBaseServerCap(uint16_t base_server_cap);
+  void setExtServerCap(uint16_t ext_server_cap);
+
+  void setServerCharset(uint8_t server_language);
+  void setServerStatus(uint16_t server_status);
 
 private:
-  int protocol_;
+  uint8_t protocol_;
   std::string version_;
-  int thread_id_;
-  std::string salt_;
-  int server_cap_;
-  int server_language_;
-  int server_status_;
-  int ext_server_cap_;
+  uint32_t thread_id_;
+  std::string auth_plugin_data_;
+  union {
+    uint32_t server_cap_;
+    struct {
+      uint16_t ext_server_cap_;
+      uint16_t base_server_cap_;
+    };
+  };
+  uint8_t server_charset_;
+  uint16_t server_status_;
+  std::string auth_plugin_name_;
 };
 
 } // namespace MySQLProxy

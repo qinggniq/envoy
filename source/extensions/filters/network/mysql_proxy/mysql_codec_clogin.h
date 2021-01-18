@@ -32,9 +32,9 @@ public:
   void setExtendedClientCap(int extended_client_cap);
   void setMaxPacket(int max_packet);
   void setCharset(int charset);
-  void setUsername(std::string& username);
-  void setAuthResp(std::string& auth_resp);
-  void setDb(std::string& db);
+  void setUsername(const std::string& username);
+  void setAuthResp(const std::string& auth_resp);
+  void setDb(const std::string& db);
 
 private:
   int client_cap_;

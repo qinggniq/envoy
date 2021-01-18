@@ -30,6 +30,7 @@ int ClientLoginResponse::parseMessage(Buffer::Instance& buffer, uint32_t) {
   setRespCode(resp_code);
   if ((resp_code == MYSQL_RESP_AUTH_SWITCH) && BufferHelper::endOfBuffer(buffer)) {
     // OldAuthSwitchRequest
+    is_old_password_switch_ = true;
     return MYSQL_SUCCESS;
   }
   uint8_t affected_rows = 0;

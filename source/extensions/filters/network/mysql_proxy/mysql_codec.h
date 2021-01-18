@@ -80,6 +80,10 @@ constexpr uint16_t MYSQL_CLIENT_CAPAB_SSL = 0x0800;
 constexpr uint16_t MYSQL_CLIENT_SECURE_CONNECTION = 0x8000;
 constexpr uint16_t MYSQL_EXT_CLIENT_CAPAB = 0x0300;
 constexpr uint16_t MYSQL_EXT_CL_PLG_AUTH_CL_DATA = 0x0020;
+// FIX(qinggniq) replace all cap flags from uint16_t to uint32_t
+constexpr uint32_t CLIENT_PLUGIN_AUTH = (1 << 19);
+constexpr uint32_t CLIENT_SECURE_CONNECTION = 0x8000;
+
 // constexpr uint16_t MYSQL_EXT_CL_SECURE_CONNECTION = 0x8000;
 // TODO
 constexpr uint16_t MYSQL_EXT_CL_PLUGIN_AUTH = 0x8;

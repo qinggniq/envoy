@@ -18,6 +18,7 @@
 #include "extensions/filters/network/mysql_proxy/mysql_decoder.h"
 #include "extensions/filters/network/mysql_proxy/mysql_session.h"
 #include "extensions/filters/network/mysql_proxy/mysql_client.h"
+#include "extensions/filters/network/mysql_proxy/mysql_utils.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -54,10 +55,10 @@ public:
 
   const MySQLProxyStats& stats() { return stats_; }
 
-  std::string getDownstreamAuthPassword() const { return downstream_auth_password_; }
-  std::string getDownstreamAuthUsername() const { return downstream_auth_username_; }
-  std::string getUpstreamAuthPassword() const { return upstream_auth_password_; }
-  std::string getUpstreamAuthUsername() const { return upstream_auth_username_; }
+  std::string getDownstreamAuthPassword() { return downstream_auth_password_; }
+  std::string getDownstreamAuthUsername() { return downstream_auth_username_; }
+  std::string getUpstreamAuthPassword() { return upstream_auth_password_; }
+  std::string getUpstreamAuthUsername() { return upstream_auth_username_; }
   Stats::Scope& scope_;
   MySQLProxyStats stats_;
   std::string downstream_auth_username_;
@@ -107,6 +108,13 @@ public:
   MySQLSession& getSession() { return decoder_->getSession(); }
 
   void writeDownstream(Buffer::Instance& data);
+  void writeDownstream(MySQLCodec& codec);
+
+private:
+  std::string authResp(AuthMethod method);
+  bool authDownstream(AuthMethod method, const std::string& downstream_username,
+                      const std::string& downstream_auth_resp);
+  void onAuthUpstream(AuthMethod method, ClientLogin& client_login);
 
 private:
   ClientPtr client_;
@@ -117,14 +125,10 @@ private:
   // Buffer::OwnedImpl write_buffer_;
   std::unique_ptr<Decoder> decoder_;
   std::string seed_;
-  std::string downsteram_auth_resp_;
-  enum AuthMethod {
-    OldPassword,
-    NativePassword,
-  };
-  AuthMethod auth_method_{OldPassword};
+  AuthMethod upstream_auth_method_{OldPassword};
+  AuthMethod downstream_auth_method_{OldPassword};
   bool sniffing_{true};
-  bool connect_allowed_{true};
+  bool authed_{false};
 };
 
 } // namespace MySQLProxy

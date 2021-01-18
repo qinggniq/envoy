@@ -16,6 +16,8 @@ public:
   int parseMessage(Buffer::Instance& buffer, uint32_t len) override;
   void encode(Buffer::Instance&) override;
 
+  // now only support Protocol::OldAuthSwitchRequest, Protocol::AuthSwitchRequest is not support
+  bool isOldAuthSwitchRequest() const { return is_old_auth_switch_req_; }
   uint8_t getRespCode() const { return resp_code_; }
   uint8_t getAffectedRows() const { return affected_rows_; }
   uint8_t getLastInsertId() const { return last_insert_id_; }
@@ -28,6 +30,7 @@ public:
   void setWarnings(uint16_t warnings);
 
 private:
+  bool is_old_auth_switch_req_{false};
   uint8_t resp_code_;
   uint8_t affected_rows_;
   uint8_t last_insert_id_;
