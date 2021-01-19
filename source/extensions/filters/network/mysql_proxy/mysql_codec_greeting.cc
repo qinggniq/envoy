@@ -17,7 +17,18 @@ void ServerGreeting::setVersion(const std::string& version) { version_.assign(ve
 
 void ServerGreeting::setThreadId(uint32_t thread_id) { thread_id_ = thread_id; }
 
-void ServerGreeting::setAuthPluginData(const std::string& data) { auth_plugin_data_ = data; }
+void ServerGreeting::setAuthPluginData(const std::string& data) {
+  if (data.size() <= 8) {
+    auth_plugin_data1_ = data;
+    return;
+  }
+  auth_plugin_data1_ = data.substr(0, 8);
+  auth_plugin_data2_ = data.substr(8);
+}
+
+void ServerGreeting::setAuthPluginData1(const std::string& data) { auth_plugin_data1_ = data; }
+
+void ServerGreeting::setAuthPluginData2(const std::string& data) { auth_plugin_data2_ = data; }
 
 void ServerGreeting::setServerCap(uint32_t server_cap) { server_cap_ = server_cap; }
 
@@ -31,9 +42,11 @@ void ServerGreeting::setServerCharset(uint8_t server_charset) { server_charset_ 
 
 void ServerGreeting::setServerStatus(uint16_t server_status) { server_status_ = server_status; }
 
+void ServerGreeting::setAuthPluginName(const std::string& name) { auth_plugin_name_ = name; }
+
 int ServerGreeting::parseMessage(Buffer::Instance& buffer, uint32_t len) {
   uint32_t buffer_length = buffer.length();
-  // parse logic from
+  // parsing logic from
   // https://github.com/mysql/mysql-proxy/blob/ca6ad61af9088147a568a079c44d0d322f5bee59/src/network-mysqld-packet.c#L1171
   if (BufferHelper::readUint8(buffer, protocol_) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing protocol in mysql Greeting msg");
@@ -48,14 +61,12 @@ int ServerGreeting::parseMessage(Buffer::Instance& buffer, uint32_t len) {
     return MYSQL_FAILURE;
   }
   // read auth plugin data part 1, which is 8 byte.
-  std::string auth_plugin_data1;
-  if (BufferHelper::readStringBySize(buffer, 8, auth_plugin_data1) != MYSQL_SUCCESS) {
+  if (BufferHelper::readStringBySize(buffer, 8, auth_plugin_data1_) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing auth_plugin_data1 in mysql Greeting msg");
     return MYSQL_FAILURE;
   }
-  auth_plugin_data_ += auth_plugin_data1;
   if (BufferHelper::readBytes(buffer, 1) != MYSQL_SUCCESS) {
-    ENVOY_LOG(info, "error parsing fill placeholder in mysql Greeting msg");
+    ENVOY_LOG(info, "error skiping bytes in mysql Greeting msg");
     return MYSQL_FAILURE;
   }
   if (protocol_ == MYSQL_PROTOCOL_9) {
@@ -82,30 +93,26 @@ int ServerGreeting::parseMessage(Buffer::Instance& buffer, uint32_t len) {
     ENVOY_LOG(info, "error parsing ext_server_cap in mysql Greeting msg");
     return MYSQL_FAILURE;
   }
-  uint8_t auth_plugin_data_len;
-  if (BufferHelper::readUint8(buffer, auth_plugin_data_len) != MYSQL_SUCCESS) {
+  uint8_t data_len = 0;
+  if (BufferHelper::readUint8(buffer, data_len) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing auth_plugin_data_len in mysql Greeting msg");
     return MYSQL_FAILURE;
   }
-  if (!auth_plugin_data_len) {
-    goto CHECK;
-  }
+
   if (BufferHelper::readBytes(buffer, 10) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing reserved in mysql Greeting msg");
     return MYSQL_FAILURE;
   }
   if (server_cap_ & CLIENT_PLUGIN_AUTH) {
     int auth_plugin_data_len2 = 0;
-    if (auth_plugin_data_len > 8) {
-      auth_plugin_data_len2 = auth_plugin_data_len - 8;
+    if (data_len > 8) {
+      auth_plugin_data_len2 = data_len - 8;
     }
-    std::string auth_plugin_data2;
-    if (BufferHelper::readStringBySize(buffer, auth_plugin_data_len2, auth_plugin_data2) !=
+    if (BufferHelper::readStringBySize(buffer, auth_plugin_data_len2, auth_plugin_data2_) !=
         MYSQL_SUCCESS) {
       ENVOY_LOG(info, "error skiping auth_plugin_data2 in mysql Greeting msg");
       return MYSQL_FAILURE;
     }
-    auth_plugin_data_ += auth_plugin_data2;
     int skiped_bytes = 12 > auth_plugin_data_len2 ? auth_plugin_data_len2 : 12;
     if (BufferHelper::readBytes(buffer, skiped_bytes) != MYSQL_SUCCESS) {
       ENVOY_LOG(info, "error skiping in mysql Greeting msg");
@@ -129,12 +136,10 @@ int ServerGreeting::parseMessage(Buffer::Instance& buffer, uint32_t len) {
       return MYSQL_FAILURE;
     }
   } else if (server_cap_ & CLIENT_SECURE_CONNECTION) {
-    std::string auth_plugin_data2;
-    if (BufferHelper::readStringBySize(buffer, 12, auth_plugin_data2) != MYSQL_SUCCESS) {
+    if (BufferHelper::readStringBySize(buffer, 12, auth_plugin_data2_) != MYSQL_SUCCESS) {
       ENVOY_LOG(info, "error parsing auth_plugin_data2 in mysql Greeting msg");
       return MYSQL_FAILURE;
     }
-    auth_plugin_data_ += auth_plugin_data2;
     if (BufferHelper::readBytes(buffer, 1) != MYSQL_SUCCESS) {
       ENVOY_LOG(info, "error skiping in mysql Greeting msg");
       return MYSQL_FAILURE;
@@ -142,19 +147,20 @@ int ServerGreeting::parseMessage(Buffer::Instance& buffer, uint32_t len) {
   }
 CHECK:
   /* some final assertions */
+  auto auth_plugin_len = auth_plugin_data1_.size() + auth_plugin_data2_.size();
   if (server_cap_ & CLIENT_PLUGIN_AUTH) {
-    if (auth_plugin_data_.size() != auth_plugin_data_len) {
+    if (auth_plugin_len != data_len) {
       ENVOY_LOG(info, "error parsing auth plugin data in mysql Greeting msg");
       return MYSQL_FAILURE;
     }
   } else if (server_cap_ & CLIENT_SECURE_CONNECTION) {
-    if (auth_plugin_data_.size() != 20) {
+    if (auth_plugin_len != 20 && data_len != 0) {
       ENVOY_LOG(info, "error parsing auth plugin data in mysql Greeting msg");
       return MYSQL_FAILURE;
     }
   } else {
     /* old auth */
-    if (auth_plugin_data_.size() != 8) {
+    if (auth_plugin_len != 8) {
       ENVOY_LOG(info, "error parsing auth plugin data in mysql Greeting msg");
       return MYSQL_FAILURE;
     }
@@ -173,8 +179,8 @@ void ServerGreeting::encode(Buffer::Instance& out) {
   }
   BufferHelper::addUint8(out, enc_end_string);
   BufferHelper::addUint32(out, thread_id_);
-  if (!auth_plugin_data_.empty()) {
-    BufferHelper::addString(out, auth_plugin_data_.substr(0, 8));
+  if (!auth_plugin_data1_.empty()) {
+    BufferHelper::addString(out, auth_plugin_data1_.substr(0, 8));
   } else {
     BufferHelper::addString(out, "01234567");
   }
@@ -188,7 +194,7 @@ void ServerGreeting::encode(Buffer::Instance& out) {
   BufferHelper::addUint16(out, ext_server_cap_);
 
   if (server_cap_ & CLIENT_PLUGIN_AUTH) {
-    BufferHelper::addUint8(out, auth_plugin_data_.size());
+    BufferHelper::addUint8(out, auth_plugin_data2_.size() + auth_plugin_data1_.size());
   } else {
     BufferHelper::addUint8(out, 0);
   }
@@ -197,13 +203,13 @@ void ServerGreeting::encode(Buffer::Instance& out) {
     BufferHelper::addUint8(out, 0);
   }
   if (server_cap_ & CLIENT_PLUGIN_AUTH) {
-    BufferHelper::addString(out, auth_plugin_data_.substr(8));
+    BufferHelper::addString(out, auth_plugin_data2_);
     BufferHelper::addString(out, auth_plugin_name_);
     // TODO(qinggniq) judge version 5.5.7-9 and 5.6.0-1 which should not add tail
     BufferHelper::addUint8(out, enc_end_string);
   } else if (server_cap_ & CLIENT_SECURE_CONNECTION) {
-    if (!auth_plugin_data_.empty()) {
-      BufferHelper::addString(out, auth_plugin_data_.substr(8));
+    if (!auth_plugin_data2_.empty()) {
+      BufferHelper::addString(out, auth_plugin_data2_);
     } else {
       BufferHelper::addString(out, "890123456789");
     }

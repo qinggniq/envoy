@@ -1,5 +1,6 @@
 #pragma once
 #include "fmt/format.h"
+#include <bits/stdint-uintn.h>
 
 namespace Envoy {
 namespace Extensions {
@@ -15,6 +16,8 @@ constexpr int MYSQL_SM_SERVER_WARNINGS = 0x0001;
 constexpr int MYSQL_SM_AFFECTED_ROWS = 1;
 constexpr int CLIENT_NUM = 10;
 constexpr int PARALLEL_SESSIONS = 4;
+constexpr uint32_t MYSQL_SERVER_CAP_AUTH_PLUGIN = 0x00080000;
+constexpr uint32_t MYSQL_SERVER_SECURE_CONNECTION = 0x00008000;
 
 class MySQLTestUtils {
 
@@ -25,6 +28,7 @@ public:
   static std::string getVersion() {
     return fmt::format("{0}.{1}.{2}", MYSQL_VER_MAJOR, MYSQL_VER_MINOR, MYSQL_VER_VAR);
   }
+  static std::string getAuthPluginName() { return "mysql_native_password"; }
 
   std::string encodeServerGreeting(int protocol);
   std::string encodeClientLogin(uint16_t client_cap, std::string user, uint8_t seq);
