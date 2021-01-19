@@ -1,3 +1,4 @@
+#include "common/buffer/buffer_impl.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
@@ -27,21 +28,22 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeV9EncDec) {
   std::string ver(MySQLTestUtils::getVersion());
   mysql_greet_encode.setVersion(ver);
   mysql_greet_encode.setThreadId(MYSQL_THREAD_ID);
-  std::string salt(MySQLTestUtils::getSalt());
-  mysql_greet_encode.setSalt(salt);
-  std::string data = mysql_greet_encode.encode();
+  std::string auth_plugin_data(MySQLTestUtils::getAuthPluginData8());
+  mysql_greet_encode.setAuthPluginData(auth_plugin_data);
+  Buffer::OwnedImpl data;
+  mysql_greet_encode.encode(data);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
   ServerGreeting mysql_greet_decode{};
-  mysql_greet_decode.decode(*decode_data, GREETING_SEQ_NUM, decode_data->length());
-  EXPECT_EQ(mysql_greet_decode.getSalt(), mysql_greet_encode.getSalt());
+  mysql_greet_decode.decode(data, GREETING_SEQ_NUM, data.length());
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
   EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getProtocol(), mysql_greet_encode.getProtocol());
   EXPECT_EQ(mysql_greet_decode.getThreadId(), mysql_greet_encode.getThreadId());
-  EXPECT_EQ(mysql_greet_decode.getServerLanguage(), 0);
+  EXPECT_EQ(mysql_greet_decode.getServerCharset(), 0);
   EXPECT_EQ(mysql_greet_decode.getServerStatus(), 0);
   EXPECT_EQ(mysql_greet_decode.getExtServerCap(), 0);
   EXPECT_EQ(mysql_greet_decode.getServerCap(), 0);
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), "");
 }
 
 /*
@@ -55,25 +57,26 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeV10EncDec) {
   std::string ver(MySQLTestUtils::getVersion());
   mysql_greet_encode.setVersion(ver);
   mysql_greet_encode.setThreadId(MYSQL_THREAD_ID);
-  std::string salt(MySQLTestUtils::getSalt());
-  mysql_greet_encode.setSalt(salt);
+  std::string salt(MySQLTestUtils::getAuthPluginData20());
+  mysql_greet_encode.setAuthPluginData(salt);
   mysql_greet_encode.setServerCap(MYSQL_SERVER_CAPAB);
-  mysql_greet_encode.setServerLanguage(MYSQL_SERVER_LANGUAGE);
+  mysql_greet_encode.setServerCharset(MYSQL_SERVER_LANGUAGE);
   mysql_greet_encode.setServerStatus(MYSQL_SERVER_STATUS);
   mysql_greet_encode.setExtServerCap(MYSQL_SERVER_EXT_CAPAB);
-  std::string data = mysql_greet_encode.encode();
+  Buffer::OwnedImpl decode_data;
+  mysql_greet_encode.encode(decode_data);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
   ServerGreeting mysql_greet_decode{};
-  mysql_greet_decode.decode(*decode_data, GREETING_SEQ_NUM, decode_data->length());
-  EXPECT_EQ(mysql_greet_decode.getSalt(), mysql_greet_encode.getSalt());
+  mysql_greet_decode.decode(decode_data, GREETING_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
   EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getProtocol(), mysql_greet_encode.getProtocol());
   EXPECT_EQ(mysql_greet_decode.getThreadId(), mysql_greet_encode.getThreadId());
-  EXPECT_EQ(mysql_greet_decode.getServerLanguage(), mysql_greet_encode.getServerLanguage());
+  EXPECT_EQ(mysql_greet_decode.getServerCharset(), mysql_greet_encode.getServerCharset());
   EXPECT_EQ(mysql_greet_decode.getServerStatus(), mysql_greet_encode.getServerStatus());
   EXPECT_EQ(mysql_greet_decode.getExtServerCap(), mysql_greet_encode.getExtServerCap());
   EXPECT_EQ(mysql_greet_decode.getServerCap(), mysql_greet_encode.getServerCap());
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), mysql_greet_encode.getAuthPluginName());
 }
 
 /*

@@ -53,7 +53,7 @@ int Command::parseMessage(Buffer::Instance& buffer, uint32_t len) {
   return MYSQL_SUCCESS;
 }
 
-void Command::setData(std::string& data) { data_.assign(data); }
+void Command::setData(const std::string& data) { data_.assign(data); }
 
 void Command::encode(Buffer::Instance& out) {
   BufferHelper::addUint8(out, static_cast<int>(cmd_));

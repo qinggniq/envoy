@@ -163,17 +163,52 @@ CHECK:
 }
 
 void ServerGreeting::encode(Buffer::Instance& out) {
+  // https://github.com/mysql/mysql-proxy/blob/ca6ad61af9088147a568a079c44d0d322f5bee59/src/network-mysqld-packet.c#L1339
   uint8_t enc_end_string = 0;
   BufferHelper::addUint8(out, protocol_);
-  BufferHelper::addString(out, version_);
+  if (!version_.empty()) {
+    BufferHelper::addString(out, version_);
+  } else {
+    BufferHelper::addString(out, "5.0.99");
+  }
   BufferHelper::addUint8(out, enc_end_string);
   BufferHelper::addUint32(out, thread_id_);
-  BufferHelper::addString(out, salt_);
+  if (!auth_plugin_data_.empty()) {
+    BufferHelper::addString(out, auth_plugin_data_.substr(0, 8));
+  } else {
+    BufferHelper::addString(out, "01234567");
+  }
   BufferHelper::addUint8(out, enc_end_string);
-  BufferHelper::addUint16(out, server_cap_);
-  BufferHelper::addUint8(out, server_language_);
+  if (protocol_ == MYSQL_PROTOCOL_9) {
+    return;
+  }
+  BufferHelper::addUint16(out, base_server_cap_);
+  BufferHelper::addUint8(out, server_charset_);
   BufferHelper::addUint16(out, server_status_);
   BufferHelper::addUint16(out, ext_server_cap_);
+
+  if (server_cap_ & CLIENT_PLUGIN_AUTH) {
+    BufferHelper::addUint8(out, auth_plugin_data_.size());
+  } else {
+    BufferHelper::addUint8(out, 0);
+  }
+  // reserved
+  for (int i = 0; i < 10; i++) {
+    BufferHelper::addUint8(out, 0);
+  }
+  if (server_cap_ & CLIENT_PLUGIN_AUTH) {
+    BufferHelper::addString(out, auth_plugin_data_.substr(8));
+    BufferHelper::addString(out, auth_plugin_name_);
+    // TODO(qinggniq) judge version 5.5.7-9 and 5.6.0-1 which should not add tail
+    BufferHelper::addUint8(out, enc_end_string);
+  } else if (server_cap_ & CLIENT_SECURE_CONNECTION) {
+    if (!auth_plugin_data_.empty()) {
+      BufferHelper::addString(out, auth_plugin_data_.substr(8));
+    } else {
+      BufferHelper::addString(out, "890123456789");
+    }
+    BufferHelper::addUint8(out, enc_end_string);
+  }
 }
 
 } // namespace MySQLProxy
