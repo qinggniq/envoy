@@ -1,5 +1,6 @@
 #include "mysql_test_utils.h"
 
+#include "common/buffer/buffer_impl.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
@@ -18,15 +19,15 @@ std::string MySQLTestUtils::encodeServerGreeting(int protocol) {
   std::string ver(MySQLTestUtils::getVersion());
   mysql_greet_encode.setVersion(ver);
   mysql_greet_encode.setThreadId(MYSQL_THREAD_ID);
-  std::string salt(getSalt());
-  mysql_greet_encode.setSalt(salt);
+  mysql_greet_encode.setAuthPluginData(getAuthPluginData8());
   mysql_greet_encode.setServerCap(MYSQL_SERVER_CAPAB);
-  mysql_greet_encode.setServerLanguage(MYSQL_SERVER_LANGUAGE);
+  mysql_greet_encode.setServerCharset(MYSQL_SERVER_LANGUAGE);
   mysql_greet_encode.setServerStatus(MYSQL_SERVER_STATUS);
   mysql_greet_encode.setExtServerCap(MYSQL_SERVER_EXT_CAPAB);
-  std::string data = mysql_greet_encode.encode();
-  std::string mysql_msg = BufferHelper::encodeHdr(data, GREETING_SEQ_NUM);
-  return mysql_msg;
+  Buffer::OwnedImpl buffer;
+  mysql_greet_encode.encode(buffer);
+  BufferHelper::encodeHdr(buffer, GREETING_SEQ_NUM);
+  return buffer.toString();
 }
 
 std::string MySQLTestUtils::encodeClientLogin(uint16_t client_cap, std::string user, uint8_t seq) {
@@ -38,9 +39,10 @@ std::string MySQLTestUtils::encodeClientLogin(uint16_t client_cap, std::string u
   mysql_clogin_encode.setUsername(user);
   std::string auth_resp(getAuthResp());
   mysql_clogin_encode.setAuthResp(auth_resp);
-  std::string data = mysql_clogin_encode.encode();
-  std::string mysql_msg = BufferHelper::encodeHdr(data, seq);
-  return mysql_msg;
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
+  BufferHelper::encodeHdr(buffer, seq);
+  return buffer.toString();
 }
 
 std::string MySQLTestUtils::encodeClientLoginResp(uint8_t srv_resp, uint8_t it, uint8_t seq_force) {
@@ -50,22 +52,24 @@ std::string MySQLTestUtils::encodeClientLoginResp(uint8_t srv_resp, uint8_t it, 
   mysql_loginok_encode.setLastInsertId(MYSQL_SM_LAST_ID);
   mysql_loginok_encode.setServerStatus(MYSQL_SM_SERVER_OK);
   mysql_loginok_encode.setWarnings(MYSQL_SM_SERVER_WARNINGS);
-  std::string data = mysql_loginok_encode.encode();
   uint8_t seq = CHALLENGE_RESP_SEQ_NUM + 2 * it;
   if (seq_force > 0) {
     seq = seq_force;
   }
-  std::string mysql_msg = BufferHelper::encodeHdr(data, seq);
-  return mysql_msg;
+  Buffer::OwnedImpl buffer;
+  mysql_loginok_encode.encode(buffer);
+  BufferHelper::encodeHdr(buffer, seq);
+  return buffer.toString();
 }
 
 std::string MySQLTestUtils::encodeAuthSwitchResp() {
   ClientSwitchResponse mysql_switch_resp_encode{};
   std::string resp_opaque_data("mysql_opaque");
   mysql_switch_resp_encode.setAuthPluginResp(resp_opaque_data);
-  std::string data = mysql_switch_resp_encode.encode();
-  std::string mysql_msg = BufferHelper::encodeHdr(data, AUTH_SWITH_RESP_SEQ);
-  return mysql_msg;
+  Buffer::OwnedImpl buffer;
+  mysql_switch_resp_encode.encode(buffer);
+  BufferHelper::encodeHdr(buffer, AUTH_SWITH_RESP_SEQ);
+  return buffer.toString();
 }
 
 } // namespace MySQLProxy

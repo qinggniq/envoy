@@ -6,19 +6,14 @@
 
 #include "envoy/buffer/buffer.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
+#include "source/extensions/filters/network/mysql_proxy/_virtual_includes/proxy_lib/extensions/filters/network/mysql_proxy/mysql_codec_clogin.h"
 
 namespace Envoy {
 namespace Extensions {
 namespace NetworkFilters {
 namespace MySQLProxy {
 
-enum ClientLoginResponseType {
-  Ok,
-  Err,
-  OldAuthSwitch,
-  PluginAuthSwitch,
-  AuthMoreData,
-};
+enum ClientLoginResponseType { Unknown, Ok, Err, OldAuthSwitch, PluginAuthSwitch, AuthMoreData };
 
 // ClientLoginResponse colud be
 // Protocol::OldAuthSwitchRequest, Protocol::AuthSwitchRequest when server want switch auth method
@@ -28,7 +23,14 @@ public:
   // MySQLCodec
   int parseMessage(Buffer::Instance& buffer, uint32_t len) override;
   void encode(Buffer::Instance&) override;
-
+  ~ClientLoginResponse() override {
+    auth_plugin_data_.clear();
+    more_plugin_data_.clear();
+    info_.clear();
+    sql_state_.clear();
+    auth_plugin_name_.clear();
+    error_message_.clear();
+  }
   ClientLoginResponseType type() const { return type_; }
   bool isOldAuthSwitchRequest() const { return type_ == OldAuthSwitch; }
 
@@ -84,7 +86,7 @@ private:
   void encodeOk(Buffer::Instance&);
   void encodeErr(Buffer::Instance&);
   void encodeAuthMore(Buffer::Instance&);
-  ClientLoginResponseType type_{OldAuthSwitch};
+  ClientLoginResponseType type_{Unknown};
   uint8_t resp_code_;
   uint64_t affected_rows_;
   uint64_t last_insert_id_;

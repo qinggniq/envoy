@@ -63,8 +63,23 @@ int ClientLogin::parseMessage(Buffer::Instance& buffer, uint32_t package_len) {
     return MYSQL_FAILURE;
   }
   if (client_cap_ & MYSQL_CLIENT_CAPAB_SSL) {
-    ENVOY_LOG(info, "proxy cannot support ssl");
-    return MYSQL_FAILURE;
+    if (BufferHelper::readUint32(buffer, client_cap_) != MYSQL_SUCCESS) {
+      ENVOY_LOG(info, "error when paring cap client ssl message");
+      return MYSQL_FAILURE;
+    }
+    if (BufferHelper::readUint32(buffer, max_packet_) != MYSQL_SUCCESS) {
+      ENVOY_LOG(info, "error when paring max packet client ssl message");
+      return MYSQL_FAILURE;
+    }
+    if (BufferHelper::readUint8(buffer, charset_) != MYSQL_SUCCESS) {
+      ENVOY_LOG(info, "error when paring character client ssl message");
+      return MYSQL_FAILURE;
+    }
+    if (BufferHelper::readBytes(buffer, UNSET_BYTES) != MYSQL_SUCCESS) {
+      ENVOY_LOG(info, "error when paring reserved data of client ssl message");
+      return MYSQL_FAILURE;
+    }
+    return MYSQL_SUCCESS;
   }
   if (client_cap_ & CLIENT_PROTOCOL_41) {
     if (BufferHelper::readUint32(buffer, client_cap_) != MYSQL_SUCCESS) {
@@ -149,16 +164,31 @@ int ClientLogin::parseMessage(Buffer::Instance& buffer, uint32_t package_len) {
 
 void ClientLogin::encode(Buffer::Instance& out) {
   uint8_t enc_end_string = 0;
+  if (client_cap_ & CLIENT_SSL) {
+    BufferHelper::addUint32(out, client_cap_);
+    BufferHelper::addUint32(out, max_packet_);
+    BufferHelper::addUint8(out, charset_);
+    for (int i = 0; i < UNSET_BYTES; i++) {
+      BufferHelper::addUint8(out, 0);
+    }
+    return;
+  }
   if (!(client_cap_ & CLIENT_PROTOCOL_41)) {
     BufferHelper::addUint16(out, base_cap_);
     BufferHelper::addUint24(out, max_packet_);
-    // TODO(qinggniq) 在修改了 username 之后 package 的size需要发生变化
-    if (!username_.empty()) {
-      BufferHelper::addString(out, username_);
-    }
+    BufferHelper::addString(out, username_);
     BufferHelper::addUint8(out, enc_end_string);
     if (!auth_resp_.empty()) {
       BufferHelper::addString(out, auth_resp_);
+    }
+    if (client_cap_ & CLIENT_CONNECT_WITH_DB) {
+      BufferHelper::addString(out, auth_resp_);
+      BufferHelper::addUint8(out, enc_end_string);
+      BufferHelper::addString(out, db_);
+      BufferHelper::addUint8(out, enc_end_string);
+    } else {
+      BufferHelper::addString(out, auth_resp_);
+      BufferHelper::addUint8(out, -1);
     }
   } else {
     BufferHelper::addUint32(out, client_cap_);
@@ -194,11 +224,10 @@ void ClientLogin::encode(Buffer::Instance& out) {
       BufferHelper::addString(out, auth_plugin_name_);
       BufferHelper::addUint8(out, enc_end_string);
     }
-    if ((client_cap_ & CLIENT_CONNECT_ATTRS)) {
+    if (client_cap_ & CLIENT_CONNECT_ATTRS) {
       ENVOY_LOG(info, "proxy can not support connection attribute");
     }
   }
-}
 }
 
 } // namespace MySQLProxy

@@ -87,6 +87,7 @@ constexpr uint32_t CLIENT_PROTOCOL_41 = 0x00000200;
 constexpr uint32_t CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA = 0x00200000;
 constexpr uint32_t CLIENT_CONNECT_WITH_DB = 0x00000008;
 constexpr uint32_t CLIENT_CONNECT_ATTRS = 0x00100000;
+constexpr uint32_t CLIENT_SSL = 0x00000800;
 
 //
 constexpr uint8_t MYSQL_SQL_STATE_LEN = 5;

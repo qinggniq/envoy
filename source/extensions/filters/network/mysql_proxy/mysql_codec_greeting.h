@@ -24,7 +24,6 @@ public:
   const std::string& getAuthPluginData1() const { return auth_plugin_data1_; }
   const std::string& getAuthPluginData2() const { return auth_plugin_data2_; }
   std::string getAuthPluginData() const { return auth_plugin_data1_ + auth_plugin_data2_; }
-
   int getServerCharset() const { return server_charset_; }
   int getServerStatus() const { return server_status_; }
   uint32_t getServerCap() const { return server_cap_; }

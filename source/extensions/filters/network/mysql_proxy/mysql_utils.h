@@ -39,7 +39,7 @@ public:
   static void addLengthEncodedInteger(Buffer::Instance& buffer, uint64_t val);
   static void addString(Buffer::Instance& buffer, const std::string& str);
   static void addStringBySize(Buffer::Instance& buffer, size_t len, const std::string& str);
-  static std::string encodeHdr(const std::string& cmd_str, uint8_t seq);
+  static void encodeHdr(Buffer::Instance& pkg, uint8_t seq);
   static bool endOfBuffer(Buffer::Instance& buffer);
   static int readUint8(Buffer::Instance& buffer, uint8_t& val);
   static int readUint16(Buffer::Instance& buffer, uint16_t& val);

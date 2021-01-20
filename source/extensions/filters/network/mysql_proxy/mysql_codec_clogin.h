@@ -21,9 +21,10 @@ public:
   uint16_t getExtendedClientCap() const { return ext_cap_; }
   uint32_t getMaxPacket() const { return max_packet_; }
   uint8_t getCharset() const { return charset_; }
-  const std::string& getUsername() const { return username_; }
-  const std::string& getAuthResp() const { return auth_resp_; }
-  const std::string& getDb() const { return db_; }
+  std::string getUsername() const { return username_; }
+  std::string getAuthResp() const { return auth_resp_; }
+  std::string getDb() const { return db_; }
+  std::string getAuthPluginName() const { return auth_plugin_name_; }
   bool isResponse41() const;
   bool isResponse320() const;
   bool isSSLRequest() const;

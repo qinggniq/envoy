@@ -8,6 +8,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include <bits/stdint-uintn.h>
 #include "mysql_test_utils.h"
 
 namespace Envoy {
@@ -175,8 +176,8 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteSalt) {
   ServerGreeting mysql_greet_decode{};
   mysql_greet_decode.decode(decode_data, GREETING_SEQ_NUM, decode_data.length());
   // encode will not allow empty auth plugin data
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData().size(), 8);
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData1(), 8);
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginData1(), mysql_greet_encode.getAuthPluginData1());
   EXPECT_EQ(mysql_greet_decode.getAuthPluginData2(), mysql_greet_encode.getAuthPluginData2());
   EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getProtocol(), mysql_greet_encode.getProtocol());
@@ -187,7 +188,7 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteSalt) {
   EXPECT_EQ(mysql_greet_decode.getExtServerCap(), mysql_greet_encode.getExtServerCap());
   EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), mysql_greet_encode.getAuthPluginName());
 }
-f
+
 /*
  * Negative Testing: Server Greetings Incomplete
  * - incomplete Server Capabilities
@@ -387,8 +388,10 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeP10ServerSecurityConnectionInComplete
 
   ServerGreeting mysql_greet_decode{};
   mysql_greet_decode.decode(decode_data, GREETING_SEQ_NUM, decode_data.length());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData1(), mysql_greet_encode.getAuthPluginData1());
 
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginData1(), mysql_greet_encode.getAuthPluginData1());
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginData2(), mysql_greet_encode.getAuthPluginData2());
   EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getProtocol(), mysql_greet_encode.getProtocol());
   EXPECT_EQ(mysql_greet_decode.getThreadId(), mysql_greet_encode.getThreadId());
@@ -397,10 +400,6 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeP10ServerSecurityConnectionInComplete
   EXPECT_EQ(mysql_greet_decode.getBaseServerCap(), mysql_greet_encode.getBaseServerCap());
   EXPECT_EQ(mysql_greet_decode.getExtServerCap(), mysql_greet_encode.getExtServerCap());
   EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), mysql_greet_encode.getAuthPluginName());
-  // encode will not allow auth plugin data2 be empty wehn CLIENT_SECURE_CONNECTION is set
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData2().size(), 12);
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData().size(),
-            mysql_greet_encode.getAuthPluginData1().size() + 12);
 }
 
 /*
@@ -443,31 +442,33 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeP10ServerCapSecurityConnection) {
  */
 TEST_F(MySQLCodecTest, MySQLClLoginV41PluginAuthEncDec) {
   ClientLogin mysql_clogin_encode{};
-  uint16_t client_capab = 0;
-  client_capab |= (MYSQL_CLIENT_CONNECT_WITH_DB | MYSQL_CLIENT_CAPAB_41VS320);
+  uint32_t client_capab = 0;
+  client_capab |= (CLIENT_CONNECT_WITH_DB | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION);
   mysql_clogin_encode.setClientCap(client_capab);
-  mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_PLG_AUTH_CL_DATA);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
   std::string user("user1");
   mysql_clogin_encode.setUsername(user);
-  std::string passwd = MySQLTestUtils::getAuthResp();
-  mysql_clogin_encode.setAuthResp(passwd);
+  mysql_clogin_encode.setAuthResp(MySQLTestUtils::getAuthResp8());
   std::string db = "mysql_db";
   mysql_clogin_encode.setDb(db);
-  std::string data = mysql_clogin_encode.encode();
+  mysql_clogin_encode.setAuthPluginName(MySQLTestUtils::getAuthPluginName());
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
+  Buffer::OwnedImpl decode_data;
+  mysql_clogin_encode.encode(decode_data);
+
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.isResponse41(), true);
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
+  EXPECT_EQ(mysql_clogin_decode.getBaseClientCap(), mysql_clogin_encode.getBaseClientCap());
   EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
   EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
   EXPECT_EQ(mysql_clogin_decode.getCharset(), mysql_clogin_encode.getCharset());
   EXPECT_EQ(mysql_clogin_decode.getUsername(), mysql_clogin_encode.getUsername());
   EXPECT_EQ(mysql_clogin_decode.getAuthResp(), mysql_clogin_encode.getAuthResp());
   EXPECT_EQ(mysql_clogin_decode.getDb(), mysql_clogin_encode.getDb());
+  EXPECT_EQ(mysql_clogin_decode.getAuthPluginName(), mysql_clogin_encode.getAuthPluginName());
 }
 
 /*
@@ -478,32 +479,32 @@ TEST_F(MySQLCodecTest, MySQLClLoginV41PluginAuthEncDec) {
  */
 TEST_F(MySQLCodecTest, MySQLClientLogin41SecureConnEncDec) {
   ClientLogin mysql_clogin_encode{};
-  uint16_t client_capab = 0;
-  client_capab |= (MYSQL_CLIENT_CONNECT_WITH_DB | MYSQL_CLIENT_CAPAB_41VS320);
+  uint32_t client_capab = 0;
+  client_capab |= (CLIENT_CONNECT_WITH_DB | CLIENT_PROTOCOL_41 | CLIENT_SECURE_CONNECTION);
   mysql_clogin_encode.setClientCap(client_capab);
-  mysql_clogin_encode.setClientCap(MYSQL_CLIENT_SECURE_CONNECTION);
-  // mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_SECURE_CONNECTION);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
   std::string user("user1");
   mysql_clogin_encode.setUsername(user);
-  std::string passwd = MySQLTestUtils::getAuthResp();
-  mysql_clogin_encode.setAuthResp(passwd);
+  mysql_clogin_encode.setAuthResp(MySQLTestUtils::getAuthResp8());
   std::string db = "mysql_db";
   mysql_clogin_encode.setDb(db);
-  std::string data = mysql_clogin_encode.encode();
+  mysql_clogin_encode.setAuthPluginName(MySQLTestUtils::getAuthPluginName());
+  Buffer::OwnedImpl decode_data;
+  mysql_clogin_encode.encode(decode_data);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.isResponse41(), true);
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
+  EXPECT_EQ(mysql_clogin_decode.getBaseClientCap(), mysql_clogin_encode.getBaseClientCap());
   EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
   EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
   EXPECT_EQ(mysql_clogin_decode.getCharset(), mysql_clogin_encode.getCharset());
   EXPECT_EQ(mysql_clogin_decode.getUsername(), mysql_clogin_encode.getUsername());
   EXPECT_EQ(mysql_clogin_decode.getAuthResp(), mysql_clogin_encode.getAuthResp());
   EXPECT_EQ(mysql_clogin_decode.getDb(), mysql_clogin_encode.getDb());
+  EXPECT_EQ(mysql_clogin_decode.getAuthPluginName(), mysql_clogin_encode.getAuthPluginName());
 }
 
 /*
@@ -513,26 +514,32 @@ TEST_F(MySQLCodecTest, MySQLClientLogin41SecureConnEncDec) {
  */
 TEST_F(MySQLCodecTest, MySQLClientLogin41EncDec) {
   ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(MYSQL_CLIENT_CAPAB_41VS320);
-  mysql_clogin_encode.setExtendedClientCap(0);
+  mysql_clogin_encode.setClientCap(CLIENT_PROTOCOL_41);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
-  std::string user("user1");
-  mysql_clogin_encode.setUsername(user);
-  std::string passwd = MySQLTestUtils::getAuthResp();
-  mysql_clogin_encode.setAuthResp(passwd);
-  std::string data = mysql_clogin_encode.encode();
+  mysql_clogin_encode.setUsername("user");
+  mysql_clogin_encode.setDb("mysql.db");
+  mysql_clogin_encode.setAuthResp(MySQLTestUtils::getAuthResp8());
+  mysql_clogin_encode.setAuthPluginName(MySQLTestUtils::getAuthPluginName());
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
+  Buffer::OwnedImpl decode_data;
+  mysql_clogin_encode.encode(decode_data);
+
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.isResponse41(), true);
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
+  EXPECT_EQ(mysql_clogin_decode.getBaseClientCap(), mysql_clogin_encode.getBaseClientCap());
   EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
   EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
   EXPECT_EQ(mysql_clogin_decode.getCharset(), mysql_clogin_encode.getCharset());
   EXPECT_EQ(mysql_clogin_decode.getUsername(), mysql_clogin_encode.getUsername());
   EXPECT_EQ(mysql_clogin_decode.getAuthResp(), mysql_clogin_encode.getAuthResp());
+  EXPECT_EQ(mysql_clogin_decode.getDb(), mysql_clogin_encode.getDb());
+  EXPECT_EQ(mysql_clogin_decode.getAuthPluginName(), mysql_clogin_encode.getAuthPluginName());
+
+  EXPECT_TRUE(mysql_clogin_decode.getAuthPluginName().empty());
+  EXPECT_TRUE(mysql_clogin_decode.getDb().empty());
 }
 
 /*
@@ -543,25 +550,31 @@ TEST_F(MySQLCodecTest, MySQLClientLogin41EncDec) {
 TEST_F(MySQLCodecTest, MySQLClientLogin320EncDec) {
   ClientLogin mysql_clogin_encode{};
   mysql_clogin_encode.setClientCap(0);
-  mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_PLG_AUTH_CL_DATA);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
-  std::string user("user1");
-  mysql_clogin_encode.setUsername(user);
-  std::string passwd = MySQLTestUtils::getAuthResp();
-  mysql_clogin_encode.setAuthResp(passwd);
+  mysql_clogin_encode.setUsername("user");
+  mysql_clogin_encode.setDb("mysql.db");
+  mysql_clogin_encode.setAuthResp(MySQLTestUtils::getAuthResp8());
+  mysql_clogin_encode.setAuthPluginName(MySQLTestUtils::getAuthPluginName());
 
-  std::string data = mysql_clogin_encode.encode();
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
+  Buffer::OwnedImpl decode_data;
+  mysql_clogin_encode.encode(decode_data);
+
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.isResponse320(), true);
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
+  EXPECT_EQ(mysql_clogin_decode.getBaseClientCap(), mysql_clogin_encode.getBaseClientCap());
   EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
   EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
   EXPECT_EQ(mysql_clogin_decode.getCharset(), mysql_clogin_encode.getCharset());
   EXPECT_EQ(mysql_clogin_decode.getUsername(), mysql_clogin_encode.getUsername());
   EXPECT_EQ(mysql_clogin_decode.getAuthResp(), mysql_clogin_encode.getAuthResp());
+  EXPECT_EQ(mysql_clogin_decode.getDb(), mysql_clogin_encode.getDb());
+  EXPECT_EQ(mysql_clogin_decode.getAuthPluginName(), mysql_clogin_encode.getAuthPluginName());
+
+  EXPECT_TRUE(mysql_clogin_decode.getAuthPluginName().empty());
+  EXPECT_TRUE(mysql_clogin_decode.getDb().empty());
 }
 
 TEST_F(MySQLCodecTest, MySQLParseLengthEncodedInteger) {
@@ -609,80 +622,109 @@ TEST_F(MySQLCodecTest, MySQLParseLengthEncodedInteger) {
     BufferHelper::addUint32(*buffer, input_val);
     EXPECT_EQ(BufferHelper::readLengthEncodedInteger(*buffer, output_val), MYSQL_FAILURE);
   }
+  {
+    // encode and decode length header
+    uint64_t input_vals[4] = {
+        5,
+        251 + 5,
+        (1 << 16) + 5,
+        (1 << 24) + 5,
+    };
+    for (int i = 0; i < 4; i++) {
+      Buffer::OwnedImpl buffer;
+      uint64_t output_val = 0;
+      BufferHelper::addLengthEncodedInteger(buffer, input_vals[i]);
+      BufferHelper::readLengthEncodedInteger(buffer, output_val);
+      EXPECT_EQ(input_vals[i], output_val);
+    }
+  }
+  {
+    // encode decode uint24
+    Buffer::OwnedImpl buffer;
+    uint32_t val = 0xfffefd;
+    BufferHelper::addUint32(buffer, val);
+    uint32_t res = 0;
+    BufferHelper::readUint24(buffer, res);
+    EXPECT_EQ(val, res);
+  }
 }
 
 /*
- * Negative Test the MYSQL Client Login 320 message parser:
+ * Negative Test the MYSQL Client Login 41 message parser:
  * Incomplete header at Client Capability
  */
-TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteClientCap) {
+TEST_F(MySQLCodecTest, MySQLClientLogin41IncompleteClientCap) {
   ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(0);
-  std::string data = mysql_clogin_encode.encode();
-  int client_cap_len = sizeof(uint8_t);
-  data = data.substr(0, client_cap_len);
+  mysql_clogin_encode.setClientCap(CLIENT_PROTOCOL_41);
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
+  int client_cap_len = sizeof(uint8_t);
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), client_cap_len);
+
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), 0);
 }
 
 /*
- * Negative Test the MYSQL Client Login 320 message parser:
+ * Negative Test the MYSQL Client Login 41 message parser:
  * Incomplete header at Extended Client Capability
  */
-TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteExtClientCap) {
+TEST_F(MySQLCodecTest, MySQLClientLogin41IncompleteExtClientCap) {
   ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(0);
-  std::string data = mysql_clogin_encode.encode();
-  int incomplete_len = sizeof(uint16_t);
-  data = data.substr(0, incomplete_len);
+  mysql_clogin_encode.setClientCap(CLIENT_PROTOCOL_41);
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
+  int incomplete_len = sizeof(uint16_t);
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
   EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), 0);
 }
 
 /*
- * Negative Test the MYSQL Client Login 320 message parser:
+ * Negative Test the MYSQL Client Login 41 message parser:
  * Incomplete header at Max Packet
  */
-TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteMaxPacket) {
+TEST_F(MySQLCodecTest, MySQLClientLogin41IncompleteMaxPacket) {
   ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(0);
+  mysql_clogin_encode.setClientCap(CLIENT_PROTOCOL_41);
   mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_PLG_AUTH_CL_DATA);
-  std::string data = mysql_clogin_encode.encode();
-  int incomplete_len = sizeof(uint16_t) + sizeof(MYSQL_EXT_CL_PLG_AUTH_CL_DATA);
-  data = data.substr(0, incomplete_len);
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
+  int incomplete_len = sizeof(uint16_t) + sizeof(MYSQL_EXT_CL_PLG_AUTH_CL_DATA);
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
   EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
   EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), 0);
 }
 
 /*
- * Negative Test the MYSQL Client Login 320 message parser:
+ * Negative Test the MYSQL Client Login 41 message parser:
  * Incomplete header at Charset
  */
-TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteCharset) {
+TEST_F(MySQLCodecTest, MySQLClientLogin41IncompleteCharset) {
   ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(0);
+  mysql_clogin_encode.setClientCap(CLIENT_PROTOCOL_41);
   mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_PLG_AUTH_CL_DATA);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
-  std::string data = mysql_clogin_encode.encode();
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
+
   int incomplete_len =
       sizeof(uint16_t) + sizeof(MYSQL_EXT_CL_PLG_AUTH_CL_DATA) + sizeof(MYSQL_MAX_PACKET);
-  data = data.substr(0, incomplete_len);
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
   EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
   EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
@@ -690,25 +732,26 @@ TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteCharset) {
 }
 
 /*
- * Negative Test the MYSQL Client Login 320 message parser:
+ * Negative Test the MYSQL Client Login 41 message parser:
  * Incomplete header at Unset bytes
  */
-TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteUnsetBytes) {
+TEST_F(MySQLCodecTest, MySQLClientLogin41IncompleteUnsetBytes) {
   ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(0);
+  mysql_clogin_encode.setClientCap(CLIENT_PROTOCOL_41);
   mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_PLG_AUTH_CL_DATA);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
-  std::string user("user1");
-  mysql_clogin_encode.setUsername(user);
-  std::string data = mysql_clogin_encode.encode();
+  mysql_clogin_encode.setUsername("user1");
+
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
+
   int incomplete_len = sizeof(uint16_t) + sizeof(MYSQL_EXT_CL_PLG_AUTH_CL_DATA) +
                        sizeof(MYSQL_MAX_PACKET) + sizeof(MYSQL_CHARSET);
-  data = data.substr(0, incomplete_len);
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
   EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
   EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
@@ -716,25 +759,26 @@ TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteUnsetBytes) {
 }
 
 /*
- * Negative Test the MYSQL Client Login 320 message parser:
+ * Negative Test the MYSQL Client Login 41 message parser:
  * Incomplete header at username
  */
-TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteUser) {
+TEST_F(MySQLCodecTest, MySQLClientLogin41IncompleteUser) {
   ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(0);
+  mysql_clogin_encode.setClientCap(CLIENT_PROTOCOL_41);
   mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_PLG_AUTH_CL_DATA);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
-  std::string user("user1");
-  mysql_clogin_encode.setUsername(user);
-  std::string data = mysql_clogin_encode.encode();
+  mysql_clogin_encode.setUsername("user1");
+
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
+
   int incomplete_len = sizeof(uint16_t) + sizeof(MYSQL_EXT_CL_PLG_AUTH_CL_DATA) +
                        sizeof(MYSQL_MAX_PACKET) + sizeof(MYSQL_CHARSET) + UNSET_BYTES;
-  data = data.substr(0, incomplete_len);
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
   EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
   EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
@@ -743,28 +787,29 @@ TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteUser) {
 }
 
 /*
- * Negative Test the MYSQL Client Login 320 message parser:
+ * Negative Test the MYSQL Client Login 41 message parser:
  * Incomplete header at authlen
  */
-TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteAuthLen) {
+TEST_F(MySQLCodecTest, MySQLClientLogin41IncompleteAuthLen) {
   ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(0);
+  mysql_clogin_encode.setClientCap(CLIENT_PROTOCOL_41);
   mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_PLG_AUTH_CL_DATA);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
   std::string user("user1");
   mysql_clogin_encode.setUsername(user);
-  std::string passwd = MySQLTestUtils::getAuthResp();
-  mysql_clogin_encode.setAuthResp(passwd);
-  std::string data = mysql_clogin_encode.encode();
+  mysql_clogin_encode.setAuthResp(MySQLTestUtils::getAuthResp8());
+
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
+
   int incomplete_len = sizeof(uint16_t) + sizeof(MYSQL_EXT_CL_PLG_AUTH_CL_DATA) +
                        sizeof(MYSQL_MAX_PACKET) + sizeof(MYSQL_CHARSET) + UNSET_BYTES +
                        user.length() + 1;
-  data = data.substr(0, incomplete_len);
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
   EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
   EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
@@ -774,28 +819,31 @@ TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteAuthLen) {
 }
 
 /*
- * Negative Test the MYSQL Client Login 320 message parser:
+ * Negative Test the MYSQL Client Login 41 message parser:
  * Incomplete header at "authpasswd"
  */
-TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteAuthPasswd) {
+TEST_F(MySQLCodecTest, MySQLClientLogin41IncompleteAuthPasswd) {
   ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(0);
+  mysql_clogin_encode.setClientCap(CLIENT_PROTOCOL_41);
   mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_PLG_AUTH_CL_DATA);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
   std::string user("user1");
   mysql_clogin_encode.setUsername(user);
-  std::string passwd = MySQLTestUtils::getAuthResp();
+  std::string passwd = MySQLTestUtils::getAuthPluginData8();
   mysql_clogin_encode.setAuthResp(passwd);
-  std::string data = mysql_clogin_encode.encode();
+
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
+
   int incomplete_len = sizeof(uint16_t) + sizeof(MYSQL_EXT_CL_PLG_AUTH_CL_DATA) +
                        sizeof(MYSQL_MAX_PACKET) + sizeof(MYSQL_CHARSET) + UNSET_BYTES +
                        user.length() + 3;
-  data = data.substr(0, incomplete_len);
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  ;
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
   EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
   EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
@@ -805,131 +853,136 @@ TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteAuthPasswd) {
 }
 
 /*
- * Negative Test the MYSQL Client SSL login message parser:
- * Incomplete header at authlen
+ * Negative Test the MYSQL Client Login 41 message parser:
+ * Incomplete header at "db name"
  */
-TEST_F(MySQLCodecTest, MySQLClientSSLLoginIncompleteAuthLen) {
+TEST_F(MySQLCodecTest, MySQLClientLogin41IncompleteDbName) {
   ClientLogin mysql_clogin_encode{};
-  // mysql_clogin_encode.setClientCap(0);
-  // mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_SECURE_CONNECTION);
-  mysql_clogin_encode.setClientCap(MYSQL_CLIENT_SECURE_CONNECTION);
-  mysql_clogin_encode.setExtendedClientCap(0);
+  mysql_clogin_encode.setClientCap(CLIENT_PROTOCOL_41 | CLIENT_CONNECT_WITH_DB);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
   std::string user("user1");
   mysql_clogin_encode.setUsername(user);
-  std::string passwd = MySQLTestUtils::getAuthResp();
+  std::string passwd = MySQLTestUtils::getAuthPluginData8();
   mysql_clogin_encode.setAuthResp(passwd);
-  std::string data = mysql_clogin_encode.encode();
+  std::string db = "mysql.db";
+  mysql_clogin_encode.setDb(db);
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
+
   int incomplete_len = sizeof(uint16_t) + sizeof(MYSQL_EXT_CL_PLG_AUTH_CL_DATA) +
                        sizeof(MYSQL_MAX_PACKET) + sizeof(MYSQL_CHARSET) + UNSET_BYTES +
-                       user.length() + 1;
-  data = data.substr(0, incomplete_len);
+                       user.length() + 1 + passwd.size() + 1;
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
-  EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
-  EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
-  EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
-  EXPECT_EQ(mysql_clogin_decode.getCharset(), mysql_clogin_encode.getCharset());
-  EXPECT_EQ(mysql_clogin_decode.getUsername(), mysql_clogin_encode.getUsername());
-  EXPECT_EQ(mysql_clogin_decode.getAuthResp(), "");
-}
-
-/*
- * Negative Test the MYSQL Client SSL login message parser:
- * Incomplete header at username
- */
-TEST_F(MySQLCodecTest, MySQLClientSSLLoginIncompleteAuthPasswd) {
-  ClientLogin mysql_clogin_encode{};
-  // mysql_clogin_encode.setClientCap(0);
-  // mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_SECURE_CONNECTION);
-  mysql_clogin_encode.setClientCap(MYSQL_CLIENT_SECURE_CONNECTION);
-  mysql_clogin_encode.setExtendedClientCap(0);
-  mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
-  mysql_clogin_encode.setCharset(MYSQL_CHARSET);
-  std::string user("user1");
-  mysql_clogin_encode.setUsername(user);
-  std::string passwd = MySQLTestUtils::getAuthResp();
-  mysql_clogin_encode.setAuthResp(passwd);
-  std::string data = mysql_clogin_encode.encode();
-  int incomplete_len = sizeof(uint16_t) + sizeof(MYSQL_EXT_CL_PLG_AUTH_CL_DATA) +
-                       sizeof(MYSQL_MAX_PACKET) + sizeof(MYSQL_CHARSET) + UNSET_BYTES +
-                       user.length() + 3;
-  data = data.substr(0, incomplete_len);
-
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
-  ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
-  EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
-  EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
-  EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
-  EXPECT_EQ(mysql_clogin_decode.getCharset(), mysql_clogin_encode.getCharset());
-  EXPECT_EQ(mysql_clogin_decode.getUsername(), mysql_clogin_encode.getUsername());
-  EXPECT_EQ(mysql_clogin_decode.getAuthResp(), "");
-}
-
-/*
- * Negative Test the MYSQL Client login message parser:
- * Incomplete auth len
- */
-TEST_F(MySQLCodecTest, MySQLClientLoginIncompleteAuthPasswd) {
-  ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(0);
-  mysql_clogin_encode.setExtendedClientCap(0);
-  mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
-  mysql_clogin_encode.setCharset(MYSQL_CHARSET);
-  std::string user("user1");
-  mysql_clogin_encode.setUsername(user);
-  std::string passwd = MySQLTestUtils::getAuthResp();
-  mysql_clogin_encode.setAuthResp(passwd);
-  std::string data = mysql_clogin_encode.encode();
-  int incomplete_len = sizeof(uint16_t) + sizeof(MYSQL_EXT_CL_PLG_AUTH_CL_DATA) +
-                       sizeof(MYSQL_MAX_PACKET) + sizeof(MYSQL_CHARSET) + UNSET_BYTES +
-                       user.length() + 3;
-  data = data.substr(0, incomplete_len);
-
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
-  ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
-  EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
-  EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
-  EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
-  EXPECT_EQ(mysql_clogin_decode.getCharset(), mysql_clogin_encode.getCharset());
-  EXPECT_EQ(mysql_clogin_decode.getUsername(), mysql_clogin_encode.getUsername());
-  EXPECT_EQ(mysql_clogin_decode.getAuthResp(), "");
-}
-
-/*
- * Negative Test the MYSQL Client login message parser:
- * Incomplete auth len
- */
-TEST_F(MySQLCodecTest, MySQLClientLoginIncompleteConnectDb) {
-  ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(MYSQL_CLIENT_CONNECT_WITH_DB);
-  mysql_clogin_encode.setExtendedClientCap(0);
-  mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
-  mysql_clogin_encode.setCharset(MYSQL_CHARSET);
-  std::string user("user1");
-  mysql_clogin_encode.setUsername(user);
-  std::string passwd = MySQLTestUtils::getAuthResp();
-  mysql_clogin_encode.setAuthResp(passwd);
-  std::string data = mysql_clogin_encode.encode();
-  int incomplete_len = sizeof(uint16_t) + sizeof(MYSQL_EXT_CL_PLG_AUTH_CL_DATA) +
-                       sizeof(MYSQL_MAX_PACKET) + sizeof(MYSQL_CHARSET) + UNSET_BYTES +
-                       user.length() + 3 + user.length() + 2;
-  data = data.substr(0, incomplete_len);
-
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
-  ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
   EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
   EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
   EXPECT_EQ(mysql_clogin_decode.getCharset(), mysql_clogin_encode.getCharset());
   EXPECT_EQ(mysql_clogin_decode.getUsername(), mysql_clogin_encode.getUsername());
   EXPECT_EQ(mysql_clogin_decode.getAuthResp(), mysql_clogin_encode.getAuthResp());
+  EXPECT_EQ(mysql_clogin_decode.getDb(), "");
+}
+
+/*
+ * Negative Test the MYSQL Client Login 41 message parser:
+ * Incomplete header at "auth plugin name"
+ */
+TEST_F(MySQLCodecTest, MySQLClientLogin41IncompleteAuthPluginName) {
+  ClientLogin mysql_clogin_encode{};
+  mysql_clogin_encode.setClientCap(CLIENT_PROTOCOL_41 | CLIENT_CONNECT_WITH_DB |
+                                   CLIENT_PLUGIN_AUTH);
+  mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
+  mysql_clogin_encode.setCharset(MYSQL_CHARSET);
+  std::string user("user1");
+  mysql_clogin_encode.setUsername(user);
+  std::string passwd = MySQLTestUtils::getAuthPluginData8();
+  mysql_clogin_encode.setAuthResp(passwd);
+  std::string db = "mysql.db";
+  mysql_clogin_encode.setDb(db);
+  mysql_clogin_encode.setAuthPluginName(MySQLTestUtils::getAuthPluginName());
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
+
+  int incomplete_len = sizeof(uint16_t) + sizeof(MYSQL_EXT_CL_PLG_AUTH_CL_DATA) +
+                       sizeof(MYSQL_MAX_PACKET) + sizeof(MYSQL_CHARSET) + UNSET_BYTES +
+                       user.length() + 1 + passwd.size() + 1 + db.size() + 1;
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
+  ClientLogin mysql_clogin_decode{};
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
+  EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
+  EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
+  EXPECT_EQ(mysql_clogin_decode.getCharset(), mysql_clogin_encode.getCharset());
+  EXPECT_EQ(mysql_clogin_decode.getUsername(), mysql_clogin_encode.getUsername());
+  EXPECT_EQ(mysql_clogin_decode.getAuthResp(), mysql_clogin_encode.getAuthResp());
+  EXPECT_EQ(mysql_clogin_decode.getDb(), mysql_clogin_encode.getDb());
+  EXPECT_EQ(mysql_clogin_decode.getAuthPluginName(), "");
+}
+
+/*
+ * Negative Test the MYSQL Client 320 login message parser:
+ * Incomplete header at cap
+ */
+TEST_F(MySQLCodecTest, MySQLClient320LoginIncompleteClientCap) {
+  ClientLogin mysql_clogin_encode{};
+  mysql_clogin_encode.setClientCap(CLIENT_CONNECT_WITH_DB);
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
+
+  int incomplete_len = 0;
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
+  ClientLogin mysql_clogin_decode{};
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_clogin_decode.getClientCap(), 0);
+}
+
+/*
+ * Negative Test the MYSQL Client 320 login message parser:
+ * Incomplete auth len
+ */
+TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteMaxPacketSize) {
+  ClientLogin mysql_clogin_encode{};
+  mysql_clogin_encode.setClientCap(0);
+  mysql_clogin_encode.setExtendedClientCap(0);
+  mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
+
+  int incomplete_len = sizeof(uint16_t);
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
+  ClientLogin mysql_clogin_decode{};
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
+  EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), 0);
+}
+
+/*
+ * Negative Test the MYSQL Client login 320 message parser:
+ * Incomplete username
+ */
+TEST_F(MySQLCodecTest, MySQLClientLogin320IncompleteUsername) {
+  ClientLogin mysql_clogin_encode{};
+  mysql_clogin_encode.setClientCap(0);
+  mysql_clogin_encode.setExtendedClientCap(0);
+  mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
+  mysql_clogin_encode.setUsername("user");
+  Buffer::OwnedImpl buffer;
+  mysql_clogin_encode.encode(buffer);
+
+  int incomplete_len = sizeof(uint16_t) + sizeof(uint16_t) + sizeof(uint8_t);
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
+  ClientLogin mysql_clogin_decode{};
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
+  EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
+  EXPECT_EQ(mysql_clogin_decode.getUsername(), "");
 }
 
 /*
@@ -939,22 +992,17 @@ TEST_F(MySQLCodecTest, MySQLClientLoginIncompleteConnectDb) {
  */
 TEST_F(MySQLCodecTest, MySQLClientLoginSSLEncDec) {
   ClientLogin mysql_clogin_encode{};
-  mysql_clogin_encode.setClientCap(MYSQL_CLIENT_CAPAB_SSL | MYSQL_CLIENT_CAPAB_41VS320);
-  mysql_clogin_encode.setExtendedClientCap(MYSQL_EXT_CL_PLG_AUTH_CL_DATA);
+  mysql_clogin_encode.setClientCap(MYSQL_CLIENT_CAPAB_SSL | CLIENT_PROTOCOL_41 |
+                                   CLIENT_PLUGIN_AUTH);
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
-  std::string user("user1");
-  mysql_clogin_encode.setUsername(user);
-  std::string passwd = MySQLTestUtils::getAuthResp();
-  mysql_clogin_encode.setAuthResp(passwd);
-  std::string data = mysql_clogin_encode.encode();
+  Buffer::OwnedImpl decode_data;
+  mysql_clogin_encode.encode(decode_data);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
   ClientLogin mysql_clogin_decode{};
-  mysql_clogin_decode.decode(*decode_data, CHALLENGE_SEQ_NUM, decode_data->length());
+  mysql_clogin_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_clogin_decode.isSSLRequest(), true);
   EXPECT_EQ(mysql_clogin_decode.getClientCap(), mysql_clogin_encode.getClientCap());
-  EXPECT_EQ(mysql_clogin_decode.getExtendedClientCap(), mysql_clogin_encode.getExtendedClientCap());
   EXPECT_EQ(mysql_clogin_decode.getMaxPacket(), mysql_clogin_encode.getMaxPacket());
 }
 

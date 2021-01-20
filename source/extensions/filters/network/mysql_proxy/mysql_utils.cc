@@ -1,4 +1,6 @@
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
+#include "common/buffer/buffer_impl.h"
+#include "envoy/buffer/buffer.h"
 #include "envoy/common/exception.h"
 #include "source/extensions/filters/network/mysql_proxy/_virtual_includes/codec_lib/extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include <bits/stdint-uintn.h>
@@ -28,16 +30,19 @@ void BufferHelper::addUint32(Buffer::Instance& buffer, uint32_t val) {
 }
 
 // Implementation of MySQL lenenc encoder based on
-// https://dev.mysql.com/doc/internals/en/integer.html#packet-Protocol::LengthEncodedInteger
+// https://dev.mysql.com/doc/internals/en/integer.html#packet-Protocol::FixedLengthInteger
 void BufferHelper::addLengthEncodedInteger(Buffer::Instance& buffer, uint64_t val) {
   if (val < 251) {
     buffer.writeLEInt<uint8_t>(val);
   } else if (val < (1 << 16)) {
     buffer.writeLEInt<uint8_t>(0xfc);
     buffer.writeLEInt<uint16_t>(val);
+  } else if (val < (1 << 24)) {
+    buffer.writeLEInt<uint8_t>(0xfd);
+    buffer.writeLEInt<uint64_t, sizeof(uint8_t) * 3>(val);
   } else {
     buffer.writeLEInt<uint8_t>(0xfe);
-    buffer.writeBEInt<uint32_t>(val);
+    buffer.writeLEInt<uint64_t>(val);
   }
 }
 
@@ -45,6 +50,13 @@ void BufferHelper::addString(Buffer::Instance& buffer, const std::string& str) {
 
 void addStringBySize(Buffer::Instance& buffer, size_t len, const std::string& str) {
   buffer.add(str.substr(0, len));
+}
+
+void BufferHelper::encodeHdr(Buffer::Instance& pkg, uint8_t seq) {
+  uint32_t header = (seq << 24) | (pkg.length() & MYSQL_HDR_PKT_SIZE_MASK);
+  Buffer::OwnedImpl buffer;
+  addUint32(buffer, header);
+  pkg.prepend(buffer);
 }
 
 std::string BufferHelper::encodeHdr(const std::string& cmd_str, uint8_t seq) {
@@ -84,11 +96,8 @@ int BufferHelper::readUint16(Buffer::Instance& buffer, uint16_t& val) {
 
 int readUint24(Buffer::Instance& buffer, uint32_t& val) {
   try {
-    val = buffer.peekLEInt<uint8_t>(0);
-    buffer.drain(sizeof(uint8_t));
-    val <<= 16;
-    val += buffer.peekLEInt<uint16_t>(0);
-    buffer.drain(sizeof(uint16_t));
+    val = buffer.peekLEInt<uint32_t, sizeof(uint8_t) * 3>(0);
+    buffer.drain(sizeof(uint8_t) * 3);
     return MYSQL_SUCCESS;
   } catch (EnvoyException& e) {
     // buffer underflow
