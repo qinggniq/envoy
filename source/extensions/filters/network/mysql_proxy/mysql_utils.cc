@@ -1,4 +1,5 @@
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
+#include "envoy/common/exception.h"
 #include "source/extensions/filters/network/mysql_proxy/_virtual_includes/codec_lib/extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include <bits/stdint-uintn.h>
 #include <iterator>
@@ -16,11 +17,35 @@ void BufferHelper::addUint16(Buffer::Instance& buffer, uint16_t val) {
   buffer.writeLEInt<uint16_t>(val);
 }
 
+void addUint32(Buffer::Instance& buffer, uint32_t val) {
+  // TODO(qinggniq) little endian uint24
+  buffer.writeLEInt<uint8_t>(val >> 16);
+  buffer.writeLEInt<uint16_t>(val & 0xffff);
+}
+
 void BufferHelper::addUint32(Buffer::Instance& buffer, uint32_t val) {
   buffer.writeLEInt<uint32_t>(val);
 }
 
+// Implementation of MySQL lenenc encoder based on
+// https://dev.mysql.com/doc/internals/en/integer.html#packet-Protocol::LengthEncodedInteger
+void BufferHelper::addLengthEncodedInteger(Buffer::Instance& buffer, uint64_t val) {
+  if (val < 251) {
+    buffer.writeLEInt<uint8_t>(val);
+  } else if (val < (1 << 16)) {
+    buffer.writeLEInt<uint8_t>(0xfc);
+    buffer.writeLEInt<uint16_t>(val);
+  } else {
+    buffer.writeLEInt<uint8_t>(0xfe);
+    buffer.writeBEInt<uint32_t>(val);
+  }
+}
+
 void BufferHelper::addString(Buffer::Instance& buffer, const std::string& str) { buffer.add(str); }
+
+void addStringBySize(Buffer::Instance& buffer, size_t len, const std::string& str) {
+  buffer.add(str.substr(0, len));
+}
 
 std::string BufferHelper::encodeHdr(const std::string& cmd_str, uint8_t seq) {
   Buffer::OwnedImpl buffer;
@@ -49,6 +74,20 @@ int BufferHelper::readUint8(Buffer::Instance& buffer, uint8_t& val) {
 int BufferHelper::readUint16(Buffer::Instance& buffer, uint16_t& val) {
   try {
     val = buffer.peekLEInt<uint16_t>(0);
+    buffer.drain(sizeof(uint16_t));
+    return MYSQL_SUCCESS;
+  } catch (EnvoyException& e) {
+    // buffer underflow
+    return MYSQL_FAILURE;
+  }
+}
+
+int readUint24(Buffer::Instance& buffer, uint32_t& val) {
+  try {
+    val = buffer.peekLEInt<uint8_t>(0);
+    buffer.drain(sizeof(uint8_t));
+    val <<= 16;
+    val += buffer.peekLEInt<uint16_t>(0);
     buffer.drain(sizeof(uint16_t));
     return MYSQL_SUCCESS;
   } catch (EnvoyException& e) {
@@ -101,6 +140,20 @@ int BufferHelper::readLengthEncodedInteger(Buffer::Instance& buffer, uint64_t& v
   return MYSQL_SUCCESS;
 }
 
+int BufferHelper::readStringEof(Buffer::Instance& buffer, std::string& str) {
+  char end = EOF;
+  ssize_t index = buffer.search(&end, sizeof(end), 0);
+  if (index == -1) {
+    return MYSQL_FAILURE;
+  }
+  if (static_cast<int>(buffer.length()) < (index + 1)) {
+    return MYSQL_FAILURE;
+  }
+  str.assign(std::string(static_cast<char*>(buffer.linearize(index)), index));
+  buffer.drain(index + 1);
+  return MYSQL_SUCCESS;
+}
+
 int BufferHelper::readBytes(Buffer::Instance& buffer, size_t skip_bytes) {
   if (buffer.length() < skip_bytes) {
     return MYSQL_FAILURE;
@@ -119,7 +172,6 @@ int BufferHelper::readString(Buffer::Instance& buffer, std::string& str) {
     return MYSQL_FAILURE;
   }
   str.assign(std::string(static_cast<char*>(buffer.linearize(index)), index));
-  str = str.substr(0);
   buffer.drain(index + 1);
   return MYSQL_SUCCESS;
 }
@@ -129,7 +181,6 @@ int BufferHelper::readStringBySize(Buffer::Instance& buffer, size_t len, std::st
     return MYSQL_FAILURE;
   }
   str.assign(std::string(static_cast<char*>(buffer.linearize(len)), len));
-  str = str.substr(0);
   buffer.drain(len);
   return MYSQL_SUCCESS;
 }
@@ -144,6 +195,25 @@ int BufferHelper::peekUint32(Buffer::Instance& buffer, uint32_t& val) {
   }
 }
 
+int BufferHelper::peekUint16(Buffer::Instance& buffer, uint16_t& val) {
+  try {
+    val = buffer.peekLEInt<uint16_t>(0);
+    return MYSQL_SUCCESS;
+  } catch (EnvoyException& e) {
+    // buffer undeflow
+    return MYSQL_FAILURE;
+  }
+}
+
+int BufferHelper::peekUint8(Buffer::Instance& buffer, uint8_t& val) {
+  try {
+    val = buffer.peekLEInt<uint8_t>(0);
+    return MYSQL_SUCCESS;
+  } catch (EnvoyException& e) {
+    // buffer undeflow
+    return MYSQL_FAILURE;
+  }
+}
 void BufferHelper::consumeHdr(Buffer::Instance& buffer) { buffer.drain(sizeof(uint32_t)); }
 
 int BufferHelper::peekHdr(Buffer::Instance& buffer, uint32_t& len, uint8_t& seq) {
@@ -272,7 +342,7 @@ bool AuthHelper::verify(const std::string& password, const std::string& seed,
   // note: If the server announces Secure Password Authentication in the Initial Handshake Packet
   // the client may use the first 8 byte of its 20-byte auth_plugin_data as input.
   // in the mean while, seed length should be equal to sig size
-  auto len = sig.size() < expected_sig.size() ? sig.size() : expected_sig.size();
+  int len = sig.size() < expected_sig.size() ? sig.size() : expected_sig.size();
   for (int i = 0; i < len; i++) {
     if (sig[i] != expected_sig[i]) {
       return false;

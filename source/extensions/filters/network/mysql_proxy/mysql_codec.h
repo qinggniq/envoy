@@ -83,6 +83,13 @@ constexpr uint16_t MYSQL_EXT_CL_PLG_AUTH_CL_DATA = 0x0020;
 // FIX(qinggniq) replace all cap flags from uint16_t to uint32_t
 constexpr uint32_t CLIENT_PLUGIN_AUTH = (1 << 19);
 constexpr uint32_t CLIENT_SECURE_CONNECTION = 0x8000;
+constexpr uint32_t CLIENT_PROTOCOL_41 = 0x00000200;
+constexpr uint32_t CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA = 0x00200000;
+constexpr uint32_t CLIENT_CONNECT_WITH_DB = 0x00000008;
+constexpr uint32_t CLIENT_CONNECT_ATTRS = 0x00100000;
+
+//
+constexpr uint8_t MYSQL_SQL_STATE_LEN = 5;
 
 // constexpr uint16_t MYSQL_EXT_CL_SECURE_CONNECTION = 0x8000;
 // TODO

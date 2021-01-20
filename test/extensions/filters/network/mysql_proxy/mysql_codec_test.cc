@@ -187,7 +187,7 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteSalt) {
   EXPECT_EQ(mysql_greet_decode.getExtServerCap(), mysql_greet_encode.getExtServerCap());
   EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), mysql_greet_encode.getAuthPluginName());
 }
-
+f
 /*
  * Negative Testing: Server Greetings Incomplete
  * - incomplete Server Capabilities
