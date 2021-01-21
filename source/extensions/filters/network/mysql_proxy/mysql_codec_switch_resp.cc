@@ -9,7 +9,7 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace MySQLProxy {
 
-void ClientSwitchResponse::setAuthPluginResp(std::string& auth_plugin_resp) {
+void ClientSwitchResponse::setAuthPluginResp(const std::string& auth_plugin_resp) {
   auth_plugin_resp_.assign(auth_plugin_resp);
 }
 

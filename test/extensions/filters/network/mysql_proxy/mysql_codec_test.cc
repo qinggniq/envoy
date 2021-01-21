@@ -89,23 +89,17 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeV10EncDec) {
  * - incomplete protocol
  */
 TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteProtocol) {
-  Buffer::OwnedImpl decode_data;
   ServerGreeting mysql_greet_encode{};
-  mysql_greet_encode.encode(decode_data);
+  mysql_greet_encode.setProtocol(MYSQL_PROTOCOL_10);
+  Buffer::OwnedImpl buffer;
+  mysql_greet_encode.encode(buffer);
+
+  int incomplete_len = 0;
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
 
   ServerGreeting mysql_greet_decode{};
   mysql_greet_decode.decode(decode_data, GREETING_SEQ_NUM, decode_data.length());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData1(), mysql_greet_encode.getAuthPluginData1());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData2(), mysql_greet_encode.getAuthPluginData2());
-  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
-  EXPECT_EQ(mysql_greet_decode.getProtocol(), mysql_greet_encode.getProtocol());
-  EXPECT_EQ(mysql_greet_decode.getThreadId(), mysql_greet_encode.getThreadId());
-  EXPECT_EQ(mysql_greet_decode.getServerStatus(), mysql_greet_encode.getServerStatus());
-  EXPECT_EQ(mysql_greet_decode.getServerCap(), mysql_greet_encode.getServerCap());
-  EXPECT_EQ(mysql_greet_decode.getBaseServerCap(), mysql_greet_encode.getBaseServerCap());
-  EXPECT_EQ(mysql_greet_decode.getExtServerCap(), mysql_greet_encode.getExtServerCap());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), mysql_greet_encode.getAuthPluginName());
+  EXPECT_EQ(mysql_greet_decode.getProtocol(), 0);
 }
 
 /*
@@ -113,24 +107,19 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteProtocol) {
  * - incomplete version
  */
 TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteVersion) {
-  Buffer::OwnedImpl decode_data;
   ServerGreeting mysql_greet_encode{};
-  mysql_greet_encode.setProtocol(MYSQL_PROTOCOL_9);
-  mysql_greet_encode.encode(decode_data);
+  mysql_greet_encode.setProtocol(MYSQL_PROTOCOL_10);
+  mysql_greet_encode.setVersion(MySQLTestUtils::getVersion());
+  Buffer::OwnedImpl buffer;
+  mysql_greet_encode.encode(buffer);
+
+  int incomplete_len = sizeof(mysql_greet_encode.getProtocol());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
 
   ServerGreeting mysql_greet_decode{};
   mysql_greet_decode.decode(decode_data, GREETING_SEQ_NUM, decode_data.length());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData1(), mysql_greet_encode.getAuthPluginData1());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData2(), mysql_greet_encode.getAuthPluginData2());
-  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getProtocol(), mysql_greet_encode.getProtocol());
-  EXPECT_EQ(mysql_greet_decode.getThreadId(), mysql_greet_encode.getThreadId());
-  EXPECT_EQ(mysql_greet_decode.getServerStatus(), mysql_greet_encode.getServerStatus());
-  EXPECT_EQ(mysql_greet_decode.getServerCap(), mysql_greet_encode.getServerCap());
-  EXPECT_EQ(mysql_greet_decode.getBaseServerCap(), mysql_greet_encode.getBaseServerCap());
-  EXPECT_EQ(mysql_greet_decode.getExtServerCap(), mysql_greet_encode.getExtServerCap());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), mysql_greet_encode.getAuthPluginName());
+  EXPECT_EQ(mysql_greet_decode.getVersion(), "");
 }
 
 /*
@@ -139,26 +128,21 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteVersion) {
  */
 TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteThreadId) {
   ServerGreeting mysql_greet_encode{};
-  mysql_greet_encode.setProtocol(MYSQL_PROTOCOL_9);
+  mysql_greet_encode.setProtocol(MYSQL_PROTOCOL_10);
   std::string ver(MySQLTestUtils::getVersion());
   mysql_greet_encode.setVersion(ver);
+  mysql_greet_encode.setThreadId(MYSQL_THREAD_ID);
+  Buffer::OwnedImpl buffer;
+  mysql_greet_encode.encode(buffer);
 
-  Buffer::OwnedImpl decode_data;
-  mysql_greet_encode.encode(decode_data);
+  int incomplete_len = sizeof(mysql_greet_encode.getProtocol()) + ver.size() + 1;
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
 
   ServerGreeting mysql_greet_decode{};
   mysql_greet_decode.decode(decode_data, GREETING_SEQ_NUM, decode_data.length());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData1(), mysql_greet_encode.getAuthPluginData1());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData2(), mysql_greet_encode.getAuthPluginData2());
-  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getProtocol(), mysql_greet_encode.getProtocol());
-  EXPECT_EQ(mysql_greet_decode.getThreadId(), mysql_greet_encode.getThreadId());
-  EXPECT_EQ(mysql_greet_decode.getServerStatus(), mysql_greet_encode.getServerStatus());
-  EXPECT_EQ(mysql_greet_decode.getServerCap(), mysql_greet_encode.getServerCap());
-  EXPECT_EQ(mysql_greet_decode.getBaseServerCap(), mysql_greet_encode.getBaseServerCap());
-  EXPECT_EQ(mysql_greet_decode.getExtServerCap(), mysql_greet_encode.getExtServerCap());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), mysql_greet_encode.getAuthPluginName());
+  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
+  EXPECT_EQ(mysql_greet_decode.getThreadId(), 0);
 }
 
 /*
@@ -167,26 +151,23 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteThreadId) {
  */
 TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteSalt) {
   ServerGreeting mysql_greet_encode{};
-  mysql_greet_encode.setProtocol(MYSQL_PROTOCOL_9);
-  mysql_greet_encode.setVersion(MySQLTestUtils::getVersion());
+  mysql_greet_encode.setProtocol(MYSQL_PROTOCOL_10);
+  std::string ver(MySQLTestUtils::getVersion());
+  mysql_greet_encode.setVersion(ver);
   mysql_greet_encode.setThreadId(MYSQL_THREAD_ID);
-  Buffer::OwnedImpl decode_data;
-  mysql_greet_encode.encode(decode_data);
+  mysql_greet_encode.setAuthPluginData(MySQLTestUtils::getAuthPluginData8());
+  Buffer::OwnedImpl buffer;
+  mysql_greet_encode.encode(buffer);
+
+  int incomplete_len = sizeof(mysql_greet_encode.getProtocol()) + ver.size() + 1;
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
 
   ServerGreeting mysql_greet_decode{};
   mysql_greet_decode.decode(decode_data, GREETING_SEQ_NUM, decode_data.length());
-  // encode will not allow empty auth plugin data
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData1(), mysql_greet_encode.getAuthPluginData1());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData2(), mysql_greet_encode.getAuthPluginData2());
-  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getProtocol(), mysql_greet_encode.getProtocol());
+  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getThreadId(), mysql_greet_encode.getThreadId());
-  EXPECT_EQ(mysql_greet_decode.getServerStatus(), mysql_greet_encode.getServerStatus());
-  EXPECT_EQ(mysql_greet_decode.getServerCap(), mysql_greet_encode.getServerCap());
-  EXPECT_EQ(mysql_greet_decode.getBaseServerCap(), mysql_greet_encode.getBaseServerCap());
-  EXPECT_EQ(mysql_greet_decode.getExtServerCap(), mysql_greet_encode.getExtServerCap());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), mysql_greet_encode.getAuthPluginName());
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), "");
 }
 
 /*
@@ -196,24 +177,26 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteSalt) {
 TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteServerCap) {
   ServerGreeting mysql_greet_encode{};
   mysql_greet_encode.setProtocol(MYSQL_PROTOCOL_10);
-  mysql_greet_encode.setVersion(MySQLTestUtils::getVersion());
+  std::string ver(MySQLTestUtils::getVersion());
+  mysql_greet_encode.setVersion(ver);
   mysql_greet_encode.setThreadId(MYSQL_THREAD_ID);
-  mysql_greet_encode.setAuthPluginData(MySQLTestUtils::getAuthPluginData8());
-  Buffer::OwnedImpl decode_data;
-  mysql_greet_encode.encode(decode_data);
+  mysql_greet_encode.setAuthPluginData1(MySQLTestUtils::getAuthPluginData8());
+  mysql_greet_encode.setBaseServerCap(MYSQL_SERVER_CAPAB);
+  Buffer::OwnedImpl buffer;
+  mysql_greet_encode.encode(buffer);
+
+  int incomplete_len = sizeof(mysql_greet_encode.getProtocol()) + ver.size() + 1 +
+                       sizeof(mysql_greet_encode.getThreadId()) +
+                       mysql_greet_encode.getAuthPluginData1().size() + 1;
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
   ServerGreeting mysql_greet_decode{};
   mysql_greet_decode.decode(decode_data, GREETING_SEQ_NUM, decode_data.length());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData1(), mysql_greet_encode.getAuthPluginData1());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData2(), mysql_greet_encode.getAuthPluginData2());
-  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getProtocol(), mysql_greet_encode.getProtocol());
+  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getThreadId(), mysql_greet_encode.getThreadId());
-  EXPECT_EQ(mysql_greet_decode.getServerStatus(), mysql_greet_encode.getServerStatus());
-  EXPECT_EQ(mysql_greet_decode.getServerCap(), mysql_greet_encode.getServerCap());
-  EXPECT_EQ(mysql_greet_decode.getBaseServerCap(), mysql_greet_encode.getBaseServerCap());
-  EXPECT_EQ(mysql_greet_decode.getExtServerCap(), mysql_greet_encode.getExtServerCap());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), mysql_greet_encode.getAuthPluginName());
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
+  EXPECT_EQ(mysql_greet_decode.getBaseServerCap(), 0);
 }
 
 /*
@@ -223,26 +206,29 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteServerCap) {
 TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteServerStatus) {
   ServerGreeting mysql_greet_encode{};
   mysql_greet_encode.setProtocol(MYSQL_PROTOCOL_10);
-  mysql_greet_encode.setVersion(MySQLTestUtils::getVersion());
+  std::string ver(MySQLTestUtils::getVersion());
+  mysql_greet_encode.setVersion(ver);
   mysql_greet_encode.setThreadId(MYSQL_THREAD_ID);
-  mysql_greet_encode.setAuthPluginData(MySQLTestUtils::getAuthPluginData8());
+  mysql_greet_encode.setAuthPluginData1(MySQLTestUtils::getAuthPluginData8());
   mysql_greet_encode.setBaseServerCap(MYSQL_SERVER_CAPAB);
-  mysql_greet_encode.setServerCharset(MYSQL_SERVER_LANGUAGE);
-  Buffer::OwnedImpl decode_data;
-  mysql_greet_encode.encode(decode_data);
+  mysql_greet_encode.setServerStatus(MYSQL_SERVER_STATUS);
+  Buffer::OwnedImpl buffer;
+  mysql_greet_encode.encode(buffer);
+
+  int incomplete_len = sizeof(mysql_greet_encode.getProtocol()) + ver.size() + 1 +
+                       sizeof(mysql_greet_encode.getThreadId()) +
+                       mysql_greet_encode.getAuthPluginData1().size() + 1 +
+                       sizeof(mysql_greet_encode.getBaseServerCap());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
   ServerGreeting mysql_greet_decode{};
   mysql_greet_decode.decode(decode_data, GREETING_SEQ_NUM, decode_data.length());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData1(), mysql_greet_encode.getAuthPluginData1());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData2(), mysql_greet_encode.getAuthPluginData2());
-  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getProtocol(), mysql_greet_encode.getProtocol());
+  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getThreadId(), mysql_greet_encode.getThreadId());
-  EXPECT_EQ(mysql_greet_decode.getServerStatus(), mysql_greet_encode.getServerStatus());
-  EXPECT_EQ(mysql_greet_decode.getServerCap(), mysql_greet_encode.getServerCap());
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
   EXPECT_EQ(mysql_greet_decode.getBaseServerCap(), mysql_greet_encode.getBaseServerCap());
-  EXPECT_EQ(mysql_greet_decode.getExtServerCap(), mysql_greet_encode.getExtServerCap());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), mysql_greet_encode.getAuthPluginName());
+  EXPECT_EQ(mysql_greet_decode.getServerStatus(), 0);
 }
 
 /*
@@ -252,28 +238,32 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteServerStatus) {
 TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteExtServerCap) {
   ServerGreeting mysql_greet_encode{};
   mysql_greet_encode.setProtocol(MYSQL_PROTOCOL_10);
-  mysql_greet_encode.setVersion(MySQLTestUtils::getVersion());
+  std::string ver(MySQLTestUtils::getVersion());
+  mysql_greet_encode.setVersion(ver);
   mysql_greet_encode.setThreadId(MYSQL_THREAD_ID);
-  mysql_greet_encode.setAuthPluginData(MySQLTestUtils::getAuthPluginData8());
+  mysql_greet_encode.setAuthPluginData1(MySQLTestUtils::getAuthPluginData8());
   mysql_greet_encode.setBaseServerCap(MYSQL_SERVER_CAPAB);
-  mysql_greet_encode.setServerCharset(MYSQL_SERVER_LANGUAGE);
   mysql_greet_encode.setServerStatus(MYSQL_SERVER_STATUS);
-  Buffer::OwnedImpl decode_data;
-  mysql_greet_encode.encode(decode_data);
+  mysql_greet_encode.setExtServerCap(MYSQL_SERVER_EXT_CAPAB);
+  Buffer::OwnedImpl buffer;
+  mysql_greet_encode.encode(buffer);
+
+  int incomplete_len = sizeof(mysql_greet_encode.getProtocol()) + ver.size() + 1 +
+                       sizeof(mysql_greet_encode.getThreadId()) +
+                       mysql_greet_encode.getAuthPluginData1().size() + 1 +
+                       sizeof(mysql_greet_encode.getBaseServerCap()) +
+                       sizeof(mysql_greet_encode.getServerStatus());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
 
   ServerGreeting mysql_greet_decode{};
   mysql_greet_decode.decode(decode_data, GREETING_SEQ_NUM, decode_data.length());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData1(), mysql_greet_encode.getAuthPluginData1());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData2(), mysql_greet_encode.getAuthPluginData2());
-  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getProtocol(), mysql_greet_encode.getProtocol());
+  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getThreadId(), mysql_greet_encode.getThreadId());
-  EXPECT_EQ(mysql_greet_decode.getServerStatus(), mysql_greet_encode.getServerStatus());
-  EXPECT_EQ(mysql_greet_decode.getServerCap(), mysql_greet_encode.getServerCap());
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
   EXPECT_EQ(mysql_greet_decode.getBaseServerCap(), mysql_greet_encode.getBaseServerCap());
-  EXPECT_EQ(mysql_greet_decode.getExtServerCap(), mysql_greet_encode.getExtServerCap());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), mysql_greet_encode.getAuthPluginName());
+  EXPECT_EQ(mysql_greet_decode.getServerStatus(), mysql_greet_encode.getServerStatus());
+  EXPECT_EQ(mysql_greet_decode.getExtServerCap(), 0);
 }
 
 /*
@@ -282,29 +272,32 @@ TEST_F(MySQLCodecTest, MySQLServerChallengeIncompleteExtServerCap) {
 TEST_F(MySQLCodecTest, MySQLServerChallengeP10ServerCapOnly) {
   ServerGreeting mysql_greet_encode{};
   mysql_greet_encode.setProtocol(MYSQL_PROTOCOL_10);
-  mysql_greet_encode.setVersion(MySQLTestUtils::getVersion());
+  std::string ver(MySQLTestUtils::getVersion());
+  mysql_greet_encode.setVersion(ver);
   mysql_greet_encode.setThreadId(MYSQL_THREAD_ID);
-  std::string auth_plugin_data(MySQLTestUtils::getAuthPluginData8());
-  mysql_greet_encode.setAuthPluginData(auth_plugin_data);
-  mysql_greet_encode.setServerCap(MYSQL_SERVER_CAPAB);
+  mysql_greet_encode.setAuthPluginData1(MySQLTestUtils::getAuthPluginData8());
+  mysql_greet_encode.setBaseServerCap(MYSQL_SERVER_CAPAB);
   mysql_greet_encode.setServerStatus(MYSQL_SERVER_STATUS);
+  mysql_greet_encode.setExtServerCap(MYSQL_SERVER_EXT_CAPAB);
+  Buffer::OwnedImpl buffer;
+  mysql_greet_encode.encode(buffer);
 
-  Buffer::OwnedImpl decode_data;
-  mysql_greet_encode.encode(decode_data);
+  int incomplete_len = sizeof(mysql_greet_encode.getProtocol()) + ver.size() + 1 +
+                       sizeof(mysql_greet_encode.getThreadId()) +
+                       mysql_greet_encode.getAuthPluginData1().size() + 1 +
+                       sizeof(mysql_greet_encode.getBaseServerCap()) +
+                       sizeof(mysql_greet_encode.getServerStatus());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
 
   ServerGreeting mysql_greet_decode{};
   mysql_greet_decode.decode(decode_data, GREETING_SEQ_NUM, decode_data.length());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData1(), mysql_greet_encode.getAuthPluginData1());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginData2(), mysql_greet_encode.getAuthPluginData2());
-  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getProtocol(), mysql_greet_encode.getProtocol());
+  EXPECT_EQ(mysql_greet_decode.getVersion(), mysql_greet_encode.getVersion());
   EXPECT_EQ(mysql_greet_decode.getThreadId(), mysql_greet_encode.getThreadId());
-  EXPECT_EQ(mysql_greet_decode.getServerStatus(), mysql_greet_encode.getServerStatus());
-  EXPECT_EQ(mysql_greet_decode.getServerCap(), mysql_greet_encode.getServerCap());
+  EXPECT_EQ(mysql_greet_decode.getAuthPluginData(), mysql_greet_encode.getAuthPluginData());
   EXPECT_EQ(mysql_greet_decode.getBaseServerCap(), mysql_greet_encode.getBaseServerCap());
-  EXPECT_EQ(mysql_greet_decode.getExtServerCap(), mysql_greet_encode.getExtServerCap());
-  EXPECT_EQ(mysql_greet_decode.getAuthPluginName(), mysql_greet_encode.getAuthPluginName());
+  EXPECT_EQ(mysql_greet_decode.getServerStatus(), mysql_greet_encode.getServerStatus());
+  EXPECT_EQ(mysql_greet_decode.getExtServerCap(), 0);
 }
 
 /*
@@ -630,12 +623,12 @@ TEST_F(MySQLCodecTest, MySQLParseLengthEncodedInteger) {
         (1 << 16) + 5,
         (1 << 24) + 5,
     };
-    for (int i = 0; i < 4; i++) {
+    for (uint64_t& input_val : input_vals) {
       Buffer::OwnedImpl buffer;
       uint64_t output_val = 0;
-      BufferHelper::addLengthEncodedInteger(buffer, input_vals[i]);
+      BufferHelper::addLengthEncodedInteger(buffer, input_val);
       BufferHelper::readLengthEncodedInteger(buffer, output_val);
-      EXPECT_EQ(input_vals[i], output_val);
+      EXPECT_EQ(input_val, output_val);
     }
   }
   {
@@ -1007,7 +1000,7 @@ TEST_F(MySQLCodecTest, MySQLClientLoginSSLEncDec) {
 }
 
 /*
- * Test the MYSQL Server Login OK message parser:
+ * Test the MYSQL Server Login Response OK message parser:
  * - message is encoded using the ClientLoginResponse class
  * - message is decoded using the ClientLoginResponse class
  */
@@ -1018,11 +1011,11 @@ TEST_F(MySQLCodecTest, MySQLLoginOkEncDec) {
   mysql_loginok_encode.setLastInsertId(MYSQL_UT_LAST_ID);
   mysql_loginok_encode.setServerStatus(MYSQL_UT_SERVER_OK);
   mysql_loginok_encode.setWarnings(MYSQL_UT_SERVER_WARNINGS);
-  std::string data = mysql_loginok_encode.encode();
+  Buffer::OwnedImpl decode_data;
+  mysql_loginok_encode.encode(decode_data);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
   ClientLoginResponse mysql_loginok_decode{};
-  mysql_loginok_decode.decode(*decode_data, CHALLENGE_RESP_SEQ_NUM, decode_data->length());
+  mysql_loginok_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_loginok_decode.getRespCode(), mysql_loginok_encode.getRespCode());
   EXPECT_EQ(mysql_loginok_decode.getAffectedRows(), mysql_loginok_encode.getAffectedRows());
   EXPECT_EQ(mysql_loginok_decode.getLastInsertId(), mysql_loginok_encode.getLastInsertId());
@@ -1031,51 +1024,117 @@ TEST_F(MySQLCodecTest, MySQLLoginOkEncDec) {
 }
 
 /*
+ * Test the MYSQL Server Login Response Err message parser:
+ * - message is encoded using the ClientLoginResponse class
+ * - message is decoded using the ClientLoginResponse class
+ */
+TEST_F(MySQLCodecTest, MySQLLoginErrEncDec) {
+  ClientLoginResponse mysql_loginerr_encode{};
+  mysql_loginerr_encode.setRespCode(MYSQL_RESP_ERR);
+  mysql_loginerr_encode.setErrorCode(MYSQL_ERROR_CODE);
+  mysql_loginerr_encode.setSqlStateMarker('#');
+  mysql_loginerr_encode.setSqlState(MySQLTestUtils::getSqlState());
+  mysql_loginerr_encode.setErrorMessage(MySQLTestUtils::getErrorMessage());
+  Buffer::OwnedImpl decode_data;
+  mysql_loginerr_encode.encode(decode_data);
+
+  ClientLoginResponse mysql_loginok_decode{};
+  mysql_loginok_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_loginok_decode.getRespCode(), mysql_loginerr_encode.getRespCode());
+  EXPECT_EQ(mysql_loginok_decode.getErrorCode(), mysql_loginerr_encode.getErrorCode());
+  EXPECT_EQ(mysql_loginok_decode.getSqlStateMarker(), mysql_loginerr_encode.getSqlStateMarker());
+  EXPECT_EQ(mysql_loginok_decode.getSqlState(), mysql_loginerr_encode.getSqlState());
+  EXPECT_EQ(mysql_loginok_decode.getErrorMessage(), mysql_loginerr_encode.getErrorMessage());
+}
+
+/*
  * Test the MYSQL Server Login Old Auth Switch message parser:
  * - message is encoded using the ClientLoginResponse class
  * - message is decoded using the ClientLoginResponse class
  */
 TEST_F(MySQLCodecTest, MySQLLoginOldAuthSwitch) {
-  ClientLoginResponse mysql_loginok_encode{};
-  mysql_loginok_encode.setRespCode(MYSQL_RESP_AUTH_SWITCH);
-  std::string data = mysql_loginok_encode.encode();
-  data = data.substr(0, 1);
+  ClientLoginResponse mysql_old_auth_switch_encode{};
+  mysql_old_auth_switch_encode.setRespCode(MYSQL_RESP_AUTH_SWITCH);
+  Buffer::OwnedImpl decode_data;
+  mysql_old_auth_switch_encode.encode(decode_data);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
-  ClientLoginResponse mysql_loginok_decode{};
-  mysql_loginok_decode.decode(*decode_data, CHALLENGE_RESP_SEQ_NUM, decode_data->length());
-  EXPECT_EQ(mysql_loginok_decode.getRespCode(), mysql_loginok_encode.getRespCode());
+  ClientLoginResponse mysql_old_auth_switch_decode{};
+  mysql_old_auth_switch_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_old_auth_switch_decode.getRespCode(), mysql_old_auth_switch_encode.getRespCode());
+}
+
+/*
+ * Test the MYSQL Server Login Auth Switch message parser:
+ * - message is encoded using the ClientLoginResponse class
+ * - message is decoded using the ClientLoginResponse class
+ */
+TEST_F(MySQLCodecTest, MySQLLoginAuthSwitch) {
+  ClientLoginResponse mysql_auth_switch_encode{};
+  mysql_auth_switch_encode.setRespCode(MYSQL_RESP_AUTH_SWITCH);
+  mysql_auth_switch_encode.setAuthPluginName(MySQLTestUtils::getAuthPluginName());
+  mysql_auth_switch_encode.setAuthPluginData(MySQLTestUtils::getAuthPluginData20());
+  Buffer::OwnedImpl decode_data;
+  mysql_auth_switch_encode.encode(decode_data);
+
+  ClientLoginResponse mysql_auth_switch_decode{};
+  mysql_auth_switch_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_auth_switch_decode.getRespCode(), mysql_auth_switch_encode.getRespCode());
+  EXPECT_EQ(mysql_auth_switch_decode.getAuthPluginName(),
+            mysql_auth_switch_encode.getAuthPluginName());
+  EXPECT_EQ(mysql_auth_switch_decode.getAuthPluginData(),
+            mysql_auth_switch_encode.getAuthPluginData());
+  EXPECT_EQ(mysql_auth_switch_decode.getAuthPluginData(), MySQLTestUtils::getAuthPluginData20());
+  EXPECT_EQ(mysql_auth_switch_decode.getAuthPluginName(), MySQLTestUtils::getAuthPluginName());
+}
+
+/*
+ * Test the MYSQL Server Login Auth More message parser:
+ * - message is encoded using the ClientLoginResponse class
+ * - message is decoded using the ClientLoginResponse class
+ */
+TEST_F(MySQLCodecTest, MySQLLoginAuthMore) {
+  ClientLoginResponse mysql_auth_more_encode{};
+  mysql_auth_more_encode.setRespCode(MYSQL_RESP_MORE);
+  mysql_auth_more_encode.setAuthMoreData(MySQLTestUtils::getAuthPluginData20());
+  Buffer::OwnedImpl decode_data;
+  mysql_auth_more_encode.encode(decode_data);
+
+  ClientLoginResponse mysql_auth_more_decode{};
+  mysql_auth_more_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_auth_more_decode.getRespCode(), mysql_auth_more_encode.getRespCode());
+  EXPECT_EQ(mysql_auth_more_decode.getAuthMoreData(), mysql_auth_more_encode.getAuthMoreData());
 }
 
 /*
  * Negative Test the MYSQL Server Login OK message parser:
- * - incomplete Client Login OK response
+ * - incomplete response code
  */
 TEST_F(MySQLCodecTest, MySQLLoginOkIncompleteRespCode) {
   ClientLoginResponse mysql_loginok_encode{};
   mysql_loginok_encode.setRespCode(MYSQL_UT_RESP_OK);
-  std::string data;
+  Buffer::OwnedImpl decode_data;
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
   ClientLoginResponse mysql_loginok_decode{};
-  mysql_loginok_decode.decode(*decode_data, CHALLENGE_RESP_SEQ_NUM, decode_data->length());
+  mysql_loginok_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_loginok_decode.getRespCode(), 0);
 }
 
 /*
  * Negative Test the MYSQL Server Login OK message parser:
- * - incomplete Client Login OK affected rows
+ * - incomplete affected rows
  */
 TEST_F(MySQLCodecTest, MySQLLoginOkIncompleteAffectedRows) {
   ClientLoginResponse mysql_loginok_encode{};
   mysql_loginok_encode.setRespCode(MYSQL_UT_RESP_OK);
   mysql_loginok_encode.setAffectedRows(1);
-  std::string data = mysql_loginok_encode.encode();
-  data = data.substr(0, 1);
+  Buffer::OwnedImpl buffer;
+  mysql_loginok_encode.encode(buffer);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
+  int incomplete_len = sizeof(mysql_loginok_encode.getRespCode());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
   ClientLoginResponse mysql_loginok_decode{};
-  mysql_loginok_decode.decode(*decode_data, CHALLENGE_RESP_SEQ_NUM, decode_data->length());
+  mysql_loginok_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_loginok_decode.getRespCode(), mysql_loginok_encode.getRespCode());
 }
 
@@ -1088,19 +1147,22 @@ TEST_F(MySQLCodecTest, MySQLLoginOkIncompleteLastInsertId) {
   mysql_loginok_encode.setRespCode(MYSQL_UT_RESP_OK);
   mysql_loginok_encode.setAffectedRows(1);
   mysql_loginok_encode.setLastInsertId(MYSQL_UT_LAST_ID);
-  std::string data = mysql_loginok_encode.encode();
-  data = data.substr(0, 2);
+  Buffer::OwnedImpl buffer;
+  mysql_loginok_encode.encode(buffer);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
+  int incomplete_len =
+      sizeof(mysql_loginok_encode.getRespCode()) + sizeof(mysql_loginok_encode.getAffectedRows());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
   ClientLoginResponse mysql_loginok_decode{};
-  mysql_loginok_decode.decode(*decode_data, CHALLENGE_RESP_SEQ_NUM, decode_data->length());
+  mysql_loginok_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_loginok_decode.getRespCode(), mysql_loginok_encode.getRespCode());
   EXPECT_EQ(mysql_loginok_decode.getAffectedRows(), mysql_loginok_encode.getAffectedRows());
 }
 
 /*
  * Negative Test the MYSQL Server Login OK message parser:
- * - incomplete Client Login OK server status
+ * - incomplete server status
  */
 TEST_F(MySQLCodecTest, MySQLLoginOkIncompleteServerStatus) {
   ClientLoginResponse mysql_loginok_encode{};
@@ -1108,12 +1170,16 @@ TEST_F(MySQLCodecTest, MySQLLoginOkIncompleteServerStatus) {
   mysql_loginok_encode.setAffectedRows(1);
   mysql_loginok_encode.setLastInsertId(MYSQL_UT_LAST_ID);
   mysql_loginok_encode.setServerStatus(MYSQL_UT_SERVER_OK);
-  std::string data = mysql_loginok_encode.encode();
-  data = data.substr(0, 3);
+  Buffer::OwnedImpl buffer;
+  mysql_loginok_encode.encode(buffer);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
+  int incomplete_len = sizeof(mysql_loginok_encode.getRespCode()) +
+                       sizeof(mysql_loginok_encode.getAffectedRows()) +
+                       sizeof(mysql_loginok_encode.getLastInsertId());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
   ClientLoginResponse mysql_loginok_decode{};
-  mysql_loginok_decode.decode(*decode_data, CHALLENGE_RESP_SEQ_NUM, decode_data->length());
+  mysql_loginok_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_loginok_decode.getRespCode(), mysql_loginok_encode.getRespCode());
   EXPECT_EQ(mysql_loginok_decode.getAffectedRows(), mysql_loginok_encode.getAffectedRows());
   EXPECT_EQ(mysql_loginok_decode.getLastInsertId(), mysql_loginok_encode.getLastInsertId());
@@ -1122,7 +1188,7 @@ TEST_F(MySQLCodecTest, MySQLLoginOkIncompleteServerStatus) {
 
 /*
  * Negative Test the MYSQL Server Login OK message parser:
- * - incomplete Client Login OK warnings
+ * - incomplete warnings
  */
 TEST_F(MySQLCodecTest, MySQLLoginOkIncompleteWarnings) {
   ClientLoginResponse mysql_loginok_encode{};
@@ -1131,12 +1197,17 @@ TEST_F(MySQLCodecTest, MySQLLoginOkIncompleteWarnings) {
   mysql_loginok_encode.setLastInsertId(MYSQL_UT_LAST_ID);
   mysql_loginok_encode.setServerStatus(MYSQL_UT_SERVER_OK);
   mysql_loginok_encode.setWarnings(MYSQL_UT_SERVER_WARNINGS);
-  std::string data = mysql_loginok_encode.encode();
-  data = data.substr(0, 5);
+  Buffer::OwnedImpl buffer;
+  mysql_loginok_encode.encode(buffer);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
+  int incomplete_len = sizeof(mysql_loginok_encode.getRespCode()) +
+                       sizeof(mysql_loginok_encode.getAffectedRows()) +
+                       sizeof(mysql_loginok_encode.getLastInsertId()) +
+                       sizeof(mysql_loginok_encode.getServerStatus());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
   ClientLoginResponse mysql_loginok_decode{};
-  mysql_loginok_decode.decode(*decode_data, CHALLENGE_RESP_SEQ_NUM, decode_data->length());
+  mysql_loginok_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
   EXPECT_EQ(mysql_loginok_decode.getRespCode(), mysql_loginok_encode.getRespCode());
   EXPECT_EQ(mysql_loginok_decode.getAffectedRows(), mysql_loginok_encode.getAffectedRows());
   EXPECT_EQ(mysql_loginok_decode.getLastInsertId(), mysql_loginok_encode.getLastInsertId());
@@ -1144,12 +1215,214 @@ TEST_F(MySQLCodecTest, MySQLLoginOkIncompleteWarnings) {
   EXPECT_EQ(mysql_loginok_decode.getWarnings(), 0);
 }
 
-TEST_F(MySQLCodecTest, MySQLCommandError) {
-  Command mysql_cmd_encode{};
-  std::string data = mysql_cmd_encode.encode();
-  data = "";
+/*
+ * Negative Test the MYSQL Server Login Err message parser:
+ * - incomplete response code
+ */
+TEST_F(MySQLCodecTest, MySQLLoginErrIncompleteRespCode) {
+  ClientLoginResponse mysql_loginerr_encode{};
+  mysql_loginerr_encode.setRespCode(MYSQL_RESP_ERR);
+  Buffer::OwnedImpl decode_data;
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(data));
+  ClientLoginResponse mysql_loginerr_decode{};
+  mysql_loginerr_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_loginerr_decode.getRespCode(), 0);
+}
+
+/*
+ * Negative Test the MYSQL Server Login ERR message parser:
+ * - incomplete error code
+ */
+TEST_F(MySQLCodecTest, MySQLLoginErrIncompleteErrorcode) {
+  ClientLoginResponse mysql_loginerr_encode{};
+  mysql_loginerr_encode.setRespCode(MYSQL_UT_RESP_OK);
+  mysql_loginerr_encode.setErrorCode(MYSQL_ERROR_CODE);
+  Buffer::OwnedImpl buffer;
+  mysql_loginerr_encode.encode(buffer);
+
+  int incomplete_len = sizeof(mysql_loginerr_encode.getRespCode());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
+  ClientLoginResponse mysql_loginerr_decode{};
+  mysql_loginerr_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_loginerr_decode.getRespCode(), mysql_loginerr_encode.getRespCode());
+  EXPECT_EQ(mysql_loginerr_decode.getErrorCode(), 0);
+}
+
+/*
+ * Negative Test the MYSQL Server Login ERR message parser:
+ * - incomplete sql state marker
+ */
+TEST_F(MySQLCodecTest, MySQLLoginErrIncompleteStateMarker) {
+  ClientLoginResponse mysql_loginerr_encode{};
+  mysql_loginerr_encode.setRespCode(MYSQL_UT_RESP_OK);
+  mysql_loginerr_encode.setErrorCode(MYSQL_ERROR_CODE);
+  mysql_loginerr_encode.setSqlStateMarker('#');
+  Buffer::OwnedImpl buffer;
+  mysql_loginerr_encode.encode(buffer);
+
+  int incomplete_len = sizeof(mysql_loginerr_encode.getRespCode()) +
+                       sizeof(mysql_loginerr_encode.getSqlStateMarker());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
+  ClientLoginResponse mysql_loginerr_decode{};
+  mysql_loginerr_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_loginerr_decode.getRespCode(), mysql_loginerr_encode.getRespCode());
+  EXPECT_EQ(mysql_loginerr_decode.getErrorCode(), mysql_loginerr_encode.getErrorCode());
+  EXPECT_EQ(mysql_loginerr_decode.getSqlStateMarker(), 0);
+}
+
+/*
+ * Negative Test the MYSQL Server Login ERR message parser:
+ * - incomplete sql state
+ */
+TEST_F(MySQLCodecTest, MySQLLoginErrIncompleteSqlState) {
+  ClientLoginResponse mysql_loginerr_encode{};
+  mysql_loginerr_encode.setRespCode(MYSQL_UT_RESP_OK);
+  mysql_loginerr_encode.setErrorCode(MYSQL_ERROR_CODE);
+  mysql_loginerr_encode.setSqlStateMarker('#');
+  mysql_loginerr_encode.setSqlState(MySQLTestUtils::getSqlState());
+  Buffer::OwnedImpl buffer;
+  mysql_loginerr_encode.encode(buffer);
+
+  int incomplete_len = sizeof(mysql_loginerr_encode.getRespCode()) +
+                       sizeof(mysql_loginerr_encode.getSqlStateMarker()) +
+                       sizeof(mysql_loginerr_encode.getSqlStateMarker());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
+  ClientLoginResponse mysql_loginerr_decode{};
+  mysql_loginerr_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_loginerr_decode.getRespCode(), mysql_loginerr_encode.getRespCode());
+  EXPECT_EQ(mysql_loginerr_decode.getErrorCode(), mysql_loginerr_encode.getErrorCode());
+  EXPECT_EQ(mysql_loginerr_decode.getSqlStateMarker(), mysql_loginerr_encode.getSqlStateMarker());
+  EXPECT_EQ(mysql_loginerr_decode.getSqlState(), "");
+}
+
+/*
+ * Negative Test the MYSQL Server Login ERR message parser:
+ * - incomplete error message
+ */
+TEST_F(MySQLCodecTest, MySQLLoginErrIncompleteErrorMessage) {
+  ClientLoginResponse mysql_loginerr_encode{};
+  mysql_loginerr_encode.setRespCode(MYSQL_UT_RESP_OK);
+  mysql_loginerr_encode.setErrorCode(MYSQL_ERROR_CODE);
+  mysql_loginerr_encode.setSqlStateMarker('#');
+  mysql_loginerr_encode.setSqlState(MySQLTestUtils::getSqlState());
+  Buffer::OwnedImpl buffer;
+  mysql_loginerr_encode.setErrorMessage(MySQLTestUtils::getErrorMessage());
+  mysql_loginerr_encode.encode(buffer);
+
+  int incomplete_len = sizeof(mysql_loginerr_encode.getRespCode()) +
+                       sizeof(mysql_loginerr_encode.getSqlStateMarker()) +
+                       sizeof(mysql_loginerr_encode.getSqlStateMarker()) +
+                       mysql_loginerr_encode.getSqlState().size();
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
+  ClientLoginResponse mysql_loginerr_decode{};
+  mysql_loginerr_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_loginerr_decode.getRespCode(), mysql_loginerr_encode.getRespCode());
+  EXPECT_EQ(mysql_loginerr_decode.getErrorCode(), mysql_loginerr_encode.getErrorCode());
+  EXPECT_EQ(mysql_loginerr_decode.getSqlStateMarker(), mysql_loginerr_encode.getSqlStateMarker());
+  EXPECT_EQ(mysql_loginerr_decode.getSqlState(), mysql_loginerr_encode.getSqlState());
+  EXPECT_EQ(mysql_loginerr_decode.getErrorMessage(), "");
+}
+
+/*
+ * Negative Test the MYSQL Server Login Auth Switch message parser:
+ * - incomplete response code
+ */
+TEST_F(MySQLCodecTest, MySQLLoginAuthSwitchIncompleteRespCode) {
+  ClientLoginResponse mysql_login_auth_switch_encode{};
+  mysql_login_auth_switch_encode.setRespCode(MYSQL_RESP_AUTH_SWITCH);
+  Buffer::OwnedImpl decode_data;
+
+  ClientLoginResponse mysql_login_auth_switch_decode{};
+  mysql_login_auth_switch_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_login_auth_switch_decode.getRespCode(), 0);
+}
+
+/*
+ * Negative Test the MYSQL Server Login ERR message parser:
+ * - incomplete auth plugin name
+ */
+TEST_F(MySQLCodecTest, MySQLLoginAuthSwitchIncompletePluginName) {
+  ClientLoginResponse mysql_login_auth_switch_encode{};
+  mysql_login_auth_switch_encode.setRespCode(MYSQL_RESP_AUTH_SWITCH);
+  mysql_login_auth_switch_encode.setAuthPluginName(MySQLTestUtils::getAuthPluginName());
+  Buffer::OwnedImpl buffer;
+  mysql_login_auth_switch_encode.encode(buffer);
+
+  int incomplete_len = sizeof(mysql_login_auth_switch_encode.getRespCode());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
+  ClientLoginResponse mysql_login_auth_switch_decode{};
+  mysql_login_auth_switch_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_login_auth_switch_decode.getRespCode(),
+            mysql_login_auth_switch_encode.getRespCode());
+  EXPECT_EQ(mysql_login_auth_switch_decode.getAuthPluginName(), "");
+}
+
+/*
+ * Negative Test the MYSQL Server Login Auth Switch message parser:
+ * - incomplete auth plugin data
+ */
+TEST_F(MySQLCodecTest, MySQLLoginAuthSwitchIncompletePluginData) {
+  ClientLoginResponse mysql_login_auth_switch_encode{};
+  mysql_login_auth_switch_encode.setRespCode(MYSQL_RESP_AUTH_SWITCH);
+  mysql_login_auth_switch_encode.setAuthPluginName(MySQLTestUtils::getAuthPluginName());
+  mysql_login_auth_switch_encode.setAuthPluginData(MySQLTestUtils::getAuthPluginData20());
+  Buffer::OwnedImpl buffer;
+  mysql_login_auth_switch_encode.encode(buffer);
+
+  int incomplete_len = sizeof(mysql_login_auth_switch_encode.getRespCode()) +
+                       mysql_login_auth_switch_encode.getAuthPluginName().size() + 1;
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
+  ClientLoginResponse mysql_login_auth_switch_decode{};
+  mysql_login_auth_switch_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_login_auth_switch_decode.getRespCode(),
+            mysql_login_auth_switch_encode.getRespCode());
+  EXPECT_EQ(mysql_login_auth_switch_decode.getAuthPluginName(),
+            mysql_login_auth_switch_encode.getAuthPluginName());
+  EXPECT_EQ(mysql_login_auth_switch_decode.getAuthPluginData(), "");
+}
+
+/*
+ * Negative Test the MYSQL Server Auth More message parser:
+ * - incomplete response code
+ */
+TEST_F(MySQLCodecTest, MySQLLoginAuthMoreIncompleteRespCode) {
+  ClientLoginResponse mysql_login_auth_more_encode{};
+  mysql_login_auth_more_encode.setRespCode(MYSQL_RESP_MORE);
+  Buffer::OwnedImpl decode_data;
+
+  ClientLoginResponse mysql_login_auth_more_decode{};
+  mysql_login_auth_more_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_login_auth_more_decode.getRespCode(), 0);
+}
+
+/*
+ * Negative Test the MYSQL Server Auth More message parser:
+ * - incomplete auth plugin name
+ */
+TEST_F(MySQLCodecTest, MySQLLoginAuthMoreIncompletePluginData) {
+  ClientLoginResponse mysql_login_auth_more_encode{};
+  mysql_login_auth_more_encode.setRespCode(MYSQL_RESP_AUTH_SWITCH);
+  mysql_login_auth_more_encode.setAuthMoreData(MySQLTestUtils::getAuthPluginData20());
+  Buffer::OwnedImpl buffer;
+  mysql_login_auth_more_encode.encode(buffer);
+
+  int incomplete_len = sizeof(mysql_login_auth_more_encode.getRespCode());
+  Buffer::OwnedImpl decode_data(buffer.toString().data(), incomplete_len);
+
+  ClientLoginResponse mysql_login_auth_more_decode{};
+  mysql_login_auth_more_decode.decode(decode_data, CHALLENGE_SEQ_NUM, decode_data.length());
+  EXPECT_EQ(mysql_login_auth_more_decode.getRespCode(), mysql_login_auth_more_encode.getRespCode());
+  EXPECT_EQ(mysql_login_auth_more_decode.getAuthMoreData(), "");
+}
+
+TEST_F(MySQLCodecTest, MySQLCommandError) {
+  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(""));
   Command mysql_cmd_decode{};
   decode_data->drain(4);
   mysql_cmd_decode.decode(*decode_data, 0, 0);
@@ -1161,14 +1434,14 @@ TEST_F(MySQLCodecTest, MySQLCommandInitDb) {
   mysql_cmd_encode.setCmd(Command::Cmd::InitDb);
   std::string db = "mysqlDB";
   mysql_cmd_encode.setData(db);
-  std::string data = mysql_cmd_encode.encode();
+  Buffer::OwnedImpl decode_data;
+  mysql_cmd_encode.encode(decode_data);
 
-  std::string mysql_msg = BufferHelper::encodeHdr(data, 0);
+  BufferHelper::encodeHdr(decode_data, 0);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(mysql_msg));
   Command mysql_cmd_decode{};
-  decode_data->drain(4);
-  mysql_cmd_decode.decode(*decode_data, 0, db.length() + 1);
+  decode_data.drain(4);
+  mysql_cmd_decode.decode(decode_data, 0, db.length() + 1);
   EXPECT_EQ(mysql_cmd_decode.getDb(), db);
 }
 
@@ -1177,14 +1450,14 @@ TEST_F(MySQLCodecTest, MySQLCommandCreateDb) {
   mysql_cmd_encode.setCmd(Command::Cmd::CreateDb);
   std::string db = "mysqlDB";
   mysql_cmd_encode.setData(db);
-  std::string data = mysql_cmd_encode.encode();
+  Buffer::OwnedImpl decode_data;
+  mysql_cmd_encode.encode(decode_data);
 
-  std::string mysql_msg = BufferHelper::encodeHdr(data, 0);
+  BufferHelper::encodeHdr(decode_data, 0);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(mysql_msg));
   Command mysql_cmd_decode{};
-  decode_data->drain(4);
-  mysql_cmd_decode.decode(*decode_data, 0, db.length() + 1);
+  decode_data.drain(4);
+  mysql_cmd_decode.decode(decode_data, 0, db.length() + 1);
   EXPECT_EQ(mysql_cmd_decode.getDb(), db);
 }
 
@@ -1193,28 +1466,28 @@ TEST_F(MySQLCodecTest, MySQLCommandDropDb) {
   mysql_cmd_encode.setCmd(Command::Cmd::DropDb);
   std::string db = "mysqlDB";
   mysql_cmd_encode.setData(db);
-  std::string data = mysql_cmd_encode.encode();
+  Buffer::OwnedImpl decode_data;
+  mysql_cmd_encode.encode(decode_data);
 
-  std::string mysql_msg = BufferHelper::encodeHdr(data, 0);
+  BufferHelper::encodeHdr(decode_data, 0);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(mysql_msg));
   Command mysql_cmd_decode{};
-  decode_data->drain(4);
-  mysql_cmd_decode.decode(*decode_data, 0, db.length() + 1);
+  decode_data.drain(4);
+  mysql_cmd_decode.decode(decode_data, 0, db.length() + 1);
   EXPECT_EQ(mysql_cmd_decode.getDb(), db);
 }
 
 TEST_F(MySQLCodecTest, MySQLCommandOther) {
   Command mysql_cmd_encode{};
   mysql_cmd_encode.setCmd(Command::Cmd::FieldList);
-  std::string data = mysql_cmd_encode.encode();
+  Buffer::OwnedImpl decode_data;
+  mysql_cmd_encode.encode(decode_data);
 
-  std::string mysql_msg = BufferHelper::encodeHdr(data, 0);
+  BufferHelper::encodeHdr(decode_data, 0);
 
-  Buffer::InstancePtr decode_data(new Buffer::OwnedImpl(mysql_msg));
   Command mysql_cmd_decode{};
-  decode_data->drain(4);
-  mysql_cmd_decode.decode(*decode_data, 0, 0);
+  decode_data.drain(4);
+  mysql_cmd_decode.decode(decode_data, 0, 0);
   EXPECT_EQ(mysql_cmd_decode.getCmd(), Command::Cmd::FieldList);
 }
 

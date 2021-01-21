@@ -99,7 +99,7 @@ public:
   void onClientSwitchResponse(ClientSwitchResponse&) override;
   void onMoreClientLoginResponse(ClientLoginResponse& message) override;
   void onCommand(Command& message) override;
-  void onCommandResponse(CommandResponse&) override;
+  void onCommandResponse(CommandResponse&) override {}
 
   void onAuthFailure(std::string&&);
   std::string scramAuth();

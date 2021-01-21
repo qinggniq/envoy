@@ -4,7 +4,6 @@
 #include "envoy/buffer/buffer.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
-#include "source/extensions/filters/network/mysql_proxy/_virtual_includes/proxy_lib/extensions/filters/network/mysql_proxy/mysql_utils.h"
 #include <bits/stdint-uintn.h>
 
 namespace Envoy {
@@ -140,26 +139,28 @@ int ClientLogin::parseMessage(Buffer::Instance& buffer, uint32_t package_len) {
       ENVOY_LOG(info, "error when parsing auth plugin name client login message");
       return MYSQL_FAILURE;
     }
-  } else {
-    if (BufferHelper::readUint16(buffer, base_cap_) != MYSQL_SUCCESS) {
-      ENVOY_LOG(info, "error when paring cap client login message");
-      return MYSQL_FAILURE;
-    }
-    if (BufferHelper::readUint24(buffer, max_packet_) != MYSQL_SUCCESS) {
-      ENVOY_LOG(info, "error when paring max packet client login message");
-      return MYSQL_FAILURE;
-    }
-    if (BufferHelper::readString(buffer, username_) != MYSQL_SUCCESS) {
-      ENVOY_LOG(info, "error when paring username client login message");
-      return MYSQL_FAILURE;
-    }
-    // there are more
-    auto remain_len = package_len - (buffer_len - buffer.length());
-    if ((remain_len > 0) && (BufferHelper::readStringBySize(buffer, remain_len, auth_resp_))) {
-      ENVOY_LOG(info, "error when paring auth resp  client login message");
-      return MYSQL_FAILURE;
-    }
   }
+
+  if (BufferHelper::readUint16(buffer, base_cap_) != MYSQL_SUCCESS) {
+    ENVOY_LOG(info, "error when paring cap client login message");
+    return MYSQL_FAILURE;
+  }
+  if (BufferHelper::readUint24(buffer, max_packet_) != MYSQL_SUCCESS) {
+    ENVOY_LOG(info, "error when paring max packet client login message");
+    return MYSQL_FAILURE;
+  }
+  if (BufferHelper::readString(buffer, username_) != MYSQL_SUCCESS) {
+    ENVOY_LOG(info, "error when paring username client login message");
+    return MYSQL_FAILURE;
+  }
+  // there are more
+  auto remain_len = package_len - (buffer_len - buffer.length());
+  if ((remain_len > 0) && (BufferHelper::readStringBySize(buffer, remain_len, auth_resp_))) {
+    ENVOY_LOG(info, "error when paring auth resp  client login message");
+    return MYSQL_FAILURE;
+  }
+
+  return MYSQL_SUCCESS;
 }
 
 void ClientLogin::encode(Buffer::Instance& out) {

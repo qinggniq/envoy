@@ -79,9 +79,6 @@ public:
   static std::string oldPasswordSignature(const std::string& password, const std::string& seed);
   static std::string nativePasswordSignature(const std::string& password, const std::string& seed);
 
-  static std::string oldPasswordHashHash(const std::string& password);
-  static std::string nativePasswordHashHash(const std::string& password);
-
   static bool oldPasswordVerify(const std::string& password, const std::string& seed,
                                 const std::string sig);
 
@@ -92,9 +89,6 @@ private:
   // client use password and seed cacluate the signature as auth response
   template <const EVP_MD* (*ShaType)(), int DigestSize>
   static std::string signature(const std::string& password, const std::string& seed);
-  // server use password hash function sha(sha(password)) store into user table
-  template <const EVP_MD* (*ShaType)(), int DigestSize>
-  static std::string passwordHashHash(const std::string& password);
   /*
    * Verify function.
    * @password: the downstream auth password.

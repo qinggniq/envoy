@@ -4,7 +4,6 @@
 #include "envoy/buffer/buffer.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
-#include "source/extensions/filters/network/mysql_proxy/_virtual_includes/proxy_lib/extensions/filters/network/mysql_proxy/mysql_utils.h"
 #include <bits/stdint-uintn.h>
 
 namespace Envoy {
@@ -29,6 +28,7 @@ void ClientLoginResponse::setErrorMessage(const std::string& message) { error_me
 // AuthSwitch
 void ClientLoginResponse::setAuthPluginData(const std::string& data) { auth_plugin_data_ = data; }
 void ClientLoginResponse::setAuthPluginName(const std::string& name) { auth_plugin_name_ = name; }
+// AuthMore
 void ClientLoginResponse::setAuthMoreData(const std::string& data) { more_plugin_data_ = data; }
 int ClientLoginResponse::parseMessage(Buffer::Instance& buffer, uint32_t len) {
   uint8_t resp_code;
@@ -47,6 +47,7 @@ int ClientLoginResponse::parseMessage(Buffer::Instance& buffer, uint32_t len) {
     return parseAuthMore(buffer, len);
   }
   ENVOY_LOG(info, "unknown mysql Login resp msg type");
+  return MYSQL_FAILURE;
 }
 
 // https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::AuthSwitchRequest

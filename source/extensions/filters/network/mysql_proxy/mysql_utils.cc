@@ -2,7 +2,8 @@
 #include "common/buffer/buffer_impl.h"
 #include "envoy/buffer/buffer.h"
 #include "envoy/common/exception.h"
-#include "source/extensions/filters/network/mysql_proxy/_virtual_includes/codec_lib/extensions/filters/network/mysql_proxy/mysql_codec.h"
+#include "extensions/filters/network/mysql_proxy/mysql_codec.h"
+
 #include <bits/stdint-uintn.h>
 #include <iterator>
 
@@ -19,10 +20,8 @@ void BufferHelper::addUint16(Buffer::Instance& buffer, uint16_t val) {
   buffer.writeLEInt<uint16_t>(val);
 }
 
-void addUint32(Buffer::Instance& buffer, uint32_t val) {
-  // TODO(qinggniq) little endian uint24
-  buffer.writeLEInt<uint8_t>(val >> 16);
-  buffer.writeLEInt<uint16_t>(val & 0xffff);
+void BufferHelper::addUint24(Buffer::Instance& buffer, uint32_t val) {
+  buffer.writeLEInt<uint32_t, sizeof(uint8_t) * 3>(val);
 }
 
 void BufferHelper::addUint32(Buffer::Instance& buffer, uint32_t val) {
@@ -48,7 +47,7 @@ void BufferHelper::addLengthEncodedInteger(Buffer::Instance& buffer, uint64_t va
 
 void BufferHelper::addString(Buffer::Instance& buffer, const std::string& str) { buffer.add(str); }
 
-void addStringBySize(Buffer::Instance& buffer, size_t len, const std::string& str) {
+void BufferHelper::addStringBySize(Buffer::Instance& buffer, size_t len, const std::string& str) {
   buffer.add(str.substr(0, len));
 }
 
@@ -57,17 +56,6 @@ void BufferHelper::encodeHdr(Buffer::Instance& pkg, uint8_t seq) {
   Buffer::OwnedImpl buffer;
   addUint32(buffer, header);
   pkg.prepend(buffer);
-}
-
-std::string BufferHelper::encodeHdr(const std::string& cmd_str, uint8_t seq) {
-  Buffer::OwnedImpl buffer;
-  // First byte contains sequence number, next 3 bytes contain cmd string size
-  uint32_t header = (seq << 24) | (cmd_str.length() & MYSQL_HDR_PKT_SIZE_MASK);
-  addUint32(buffer, header);
-
-  std::string e_string = buffer.toString();
-  e_string.append(cmd_str);
-  return e_string;
 }
 
 bool BufferHelper::endOfBuffer(Buffer::Instance& buffer) { return buffer.length() == 0; }
@@ -94,7 +82,7 @@ int BufferHelper::readUint16(Buffer::Instance& buffer, uint16_t& val) {
   }
 }
 
-int readUint24(Buffer::Instance& buffer, uint32_t& val) {
+int BufferHelper::readUint24(Buffer::Instance& buffer, uint32_t& val) {
   try {
     val = buffer.peekLEInt<uint32_t, sizeof(uint8_t) * 3>(0);
     buffer.drain(sizeof(uint8_t) * 3);
@@ -297,37 +285,6 @@ std::string AuthHelper::signature(const std::string& password, const std::string
     to_be_xored[i] = to_be_xored[i] ^ hashstage1[i];
   }
   return std::string(to_be_xored.begin(), to_be_xored.end());
-}
-
-std::string AuthHelper::oldPasswordHashHash(const std::string& password) {
-  return passwordHashHash<EVP_sha1, SHA_DIGEST_LENGTH>(password);
-}
-
-std::string AuthHelper::nativePasswordHashHash(const std::string& password) {
-  return passwordHashHash<EVP_sha256, SHA256_DIGEST_LENGTH>(password);
-}
-
-template <const EVP_MD* (*ShaType)(), int DigestSize>
-std::string passwordHashHash(const std::string& password) {
-  // passwordHash = sha(sha(password))
-  std::vector<uint8_t> passwordHash(DigestSize);
-  bssl::ScopedEVP_MD_CTX ctx;
-  auto rc = EVP_DigestInit(ctx.get(), ShaType());
-  RELEASE_ASSERT(rc == 1, "Failed to init digest context");
-  rc = EVP_DigestUpdate(ctx.get(), password.data(), password.size());
-  RELEASE_ASSERT(rc == 1, "Failed to update digest");
-  rc = EVP_DigestFinal(ctx.get(), passwordHash.data(), nullptr);
-  RELEASE_ASSERT(rc == 1, "Failed to finalize digest");
-
-  rc = EVP_MD_CTX_reset(ctx.get());
-  RELEASE_ASSERT(rc == 1, "Failed to reset digest context");
-  rc = EVP_DigestUpdate(ctx.get(), passwordHash.data(), passwordHash.size());
-  RELEASE_ASSERT(rc == 1, "Failed to update digest");
-  rc = EVP_DigestFinal(ctx.get(), passwordHash.data(), nullptr);
-  RELEASE_ASSERT(rc == 1, "Failed to finalize digest");
-  rc = EVP_MD_CTX_reset(ctx.get());
-  RELEASE_ASSERT(rc == 1, "Failed to reset digest context");
-  return std::string(passwordHash.begin(), passwordHash.end());
 }
 
 bool AuthHelper::oldPasswordVerify(const std::string& password, const std::string& seed,

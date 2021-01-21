@@ -6,7 +6,7 @@
 
 #include "envoy/buffer/buffer.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
-#include "source/extensions/filters/network/mysql_proxy/_virtual_includes/proxy_lib/extensions/filters/network/mysql_proxy/mysql_codec_clogin.h"
+#include "extensions/filters/network/mysql_proxy/mysql_codec_clogin.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -20,17 +20,15 @@ enum ClientLoginResponseType { Unknown, Ok, Err, OldAuthSwitch, PluginAuthSwitch
 // or OK_Packet, ERR_Packet when server auth ok or error
 class ClientLoginResponse : public MySQLCodec {
 public:
+  ClientLoginResponse() : type_(Unknown) {}
+  ~ClientLoginResponse() override {
+    auth_plugin_data_.clear();
+    auth_plugin_name_.clear();
+  }
   // MySQLCodec
   int parseMessage(Buffer::Instance& buffer, uint32_t len) override;
   void encode(Buffer::Instance&) override;
-  ~ClientLoginResponse() override {
-    auth_plugin_data_.clear();
-    more_plugin_data_.clear();
-    info_.clear();
-    sql_state_.clear();
-    auth_plugin_name_.clear();
-    error_message_.clear();
-  }
+
   ClientLoginResponseType type() const { return type_; }
   bool isOldAuthSwitchRequest() const { return type_ == OldAuthSwitch; }
 
@@ -59,17 +57,20 @@ public:
 
   // common
   void setRespCode(uint8_t resp_code);
+
   // Ok
   void setAffectedRows(uint8_t affected_rows);
   void setLastInsertId(uint8_t last_insert_id);
   void setServerStatus(uint16_t status);
   void setWarnings(uint16_t warnings);
   void setInfo(const std::string& info);
+
   // Err
   void setErrorCode(uint16_t error_code);
   void setSqlStateMarker(uint8_t marker);
   void setSqlState(const std::string&);
   void setErrorMessage(const std::string&);
+
   // AuthSwitch
   void setAuthPluginData(const std::string& data);
   void setAuthPluginName(const std::string& name);
@@ -86,7 +87,8 @@ private:
   void encodeOk(Buffer::Instance&);
   void encodeErr(Buffer::Instance&);
   void encodeAuthMore(Buffer::Instance&);
-  ClientLoginResponseType type_{Unknown};
+
+  ClientLoginResponseType type_{};
   uint8_t resp_code_;
   uint64_t affected_rows_;
   uint64_t last_insert_id_;

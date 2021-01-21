@@ -1,6 +1,6 @@
 #pragma once
 #include "envoy/upstream/cluster_manager.h"
-#include "source/extensions/filters/network/mysql_proxy/mysql_codec.h"
+#include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 
 namespace Envoy {
 namespace Extensions {

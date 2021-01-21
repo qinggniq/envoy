@@ -37,8 +37,7 @@ std::string MySQLTestUtils::encodeClientLogin(uint16_t client_cap, std::string u
   mysql_clogin_encode.setMaxPacket(MYSQL_MAX_PACKET);
   mysql_clogin_encode.setCharset(MYSQL_CHARSET);
   mysql_clogin_encode.setUsername(user);
-  std::string auth_resp(getAuthResp());
-  mysql_clogin_encode.setAuthResp(auth_resp);
+  mysql_clogin_encode.setAuthResp(getAuthPluginData8());
   Buffer::OwnedImpl buffer;
   mysql_clogin_encode.encode(buffer);
   BufferHelper::encodeHdr(buffer, seq);
