@@ -238,6 +238,27 @@ ClientLoginResponse& ClientLoginResponse::operator=(ClientLoginResponse&& other)
   return *this;
 }
 
+bool ClientLoginResponse::operator==(const ClientLoginResponse& other) const {
+  if (&other == this) {
+    return true;
+  }
+  if (other.type_ != type_) {
+    return false;
+  }
+  switch (type_) {
+  case Ok:
+    return ok_ == other.ok_;
+  case Err:
+    return err_ == other.err_;
+  case AuthSwitch:
+    return auth_switch_ == other.auth_switch_;
+  case AuthMoreData:
+    return auth_more_ == other.auth_more_;
+  default:
+    return true;
+  }
+}
+
 ClientLoginResponse::AuthMoreMessage& ClientLoginResponse::asAuthMoreMessage() {
   ASSERT(type_ == AuthMoreData);
   return auth_more_;
@@ -268,11 +289,11 @@ const ClientLoginResponse::OkMessage& ClientLoginResponse::asOkMessage() const {
 }
 
 ClientLoginResponse::ErrMessage& ClientLoginResponse::asErrMessage() {
-  ASSERT(type_ == Ok);
+  ASSERT(type_ == Err);
   return err_;
 }
 const ClientLoginResponse::ErrMessage& ClientLoginResponse::asErrMessage() const {
-  ASSERT(type_ == Ok);
+  ASSERT(type_ == Err);
   return err_;
 }
 

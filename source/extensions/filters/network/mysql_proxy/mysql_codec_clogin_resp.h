@@ -115,10 +115,10 @@ public:
     ErrMessage& operator=(ErrMessage&&) noexcept;
     bool operator==(const ErrMessage&) const;
     // Err
-    void setErrorCode(uint16_t error_code);
-    void setSqlStateMarker(uint8_t marker);
-    void setSqlState(const std::string&);
-    void setErrorMessage(const std::string&);
+    void setErrorCode(uint16_t error_code) { error_code_ = error_code; }
+    void setSqlStateMarker(uint8_t marker) { marker_ = marker; }
+    void setSqlState(const std::string& state) { sql_state_ = state; }
+    void setErrorMessage(const std::string& msg) { error_message_ = msg; }
     // Err
     uint16_t getErrorCode() const { return error_code_; }
     uint8_t getSqlStateMarker() const { return marker_; }
