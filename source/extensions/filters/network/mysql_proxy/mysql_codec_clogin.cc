@@ -4,6 +4,7 @@
 #include "envoy/buffer/buffer.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
+#include "source/extensions/filters/network/mysql_proxy/_virtual_includes/proxy_lib/extensions/filters/network/mysql_proxy/mysql_utils.h"
 #include <bits/stdint-uintn.h>
 
 namespace Envoy {
@@ -53,8 +54,7 @@ bool ClientLogin::isClientSecureConnection() const {
   return client_cap_ & MYSQL_CLIENT_SECURE_CONNECTION;
 }
 
-int ClientLogin::parseMessage(Buffer::Instance& buffer, uint32_t package_len) {
-  auto buffer_len = buffer.length();
+int ClientLogin::parseMessage(Buffer::Instance& buffer, uint32_t) {
   /* 4.0 uses 2 byte, 4.1+ uses 4 bytes, but the proto-flag is in the lower 2
    * bytes */
   if (BufferHelper::peekUint16(buffer, base_cap_) != MYSQL_SUCCESS) {
@@ -135,7 +135,7 @@ int ClientLogin::parseMessage(Buffer::Instance& buffer, uint32_t package_len) {
       return MYSQL_FAILURE;
     }
     if ((client_cap_ & CLIENT_PLUGIN_AUTH) &&
-        (BufferHelper::readString(buffer, db_) != MYSQL_SUCCESS)) {
+        (BufferHelper::readString(buffer, auth_plugin_name_) != MYSQL_SUCCESS)) {
       ENVOY_LOG(info, "error when parsing auth plugin name client login message");
       return MYSQL_FAILURE;
     }
@@ -154,12 +154,10 @@ int ClientLogin::parseMessage(Buffer::Instance& buffer, uint32_t package_len) {
     return MYSQL_FAILURE;
   }
   // there are more
-  auto remain_len = package_len - (buffer_len - buffer.length());
-  if ((remain_len > 0) && (BufferHelper::readStringBySize(buffer, remain_len, auth_resp_))) {
+  if (BufferHelper::readStringEof(buffer, auth_resp_)) {
     ENVOY_LOG(info, "error when paring auth resp  client login message");
     return MYSQL_FAILURE;
   }
-
   return MYSQL_SUCCESS;
 }
 
@@ -174,14 +172,38 @@ void ClientLogin::encode(Buffer::Instance& out) {
     }
     return;
   }
-  if (!(client_cap_ & CLIENT_PROTOCOL_41)) {
+  if (client_cap_ & CLIENT_PROTOCOL_41) {
+    BufferHelper::addUint32(out, client_cap_);
+    BufferHelper::addUint32(out, max_packet_);
+    BufferHelper::addUint8(out, charset_);
+    for (int i = 0; i < UNSET_BYTES; i++) {
+      BufferHelper::addUint8(out, 0);
+    }
+    BufferHelper::addString(out, username_);
+    BufferHelper::addUint8(out, enc_end_string);
+    if (client_cap_ & CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA) {
+      BufferHelper::addLengthEncodedInteger(out, auth_resp_.length());
+      BufferHelper::addString(out, auth_resp_);
+    } else if (client_cap_ & CLIENT_SECURE_CONNECTION) {
+      BufferHelper::addUint8(out, auth_resp_.length());
+      BufferHelper::addString(out, auth_resp_);
+    } else {
+      BufferHelper::addString(out, auth_resp_);
+      BufferHelper::addUint8(out, enc_end_string);
+    }
+    if (client_cap_ & CLIENT_CONNECT_WITH_DB) {
+      BufferHelper::addString(out, db_);
+      BufferHelper::addUint8(out, enc_end_string);
+    }
+    if (client_cap_ & CLIENT_PLUGIN_AUTH) {
+      BufferHelper::addString(out, auth_plugin_name_);
+      BufferHelper::addUint8(out, enc_end_string);
+    }
+  } else {
     BufferHelper::addUint16(out, base_cap_);
     BufferHelper::addUint24(out, max_packet_);
     BufferHelper::addString(out, username_);
     BufferHelper::addUint8(out, enc_end_string);
-    if (!auth_resp_.empty()) {
-      BufferHelper::addString(out, auth_resp_);
-    }
     if (client_cap_ & CLIENT_CONNECT_WITH_DB) {
       BufferHelper::addString(out, auth_resp_);
       BufferHelper::addUint8(out, enc_end_string);
@@ -190,43 +212,6 @@ void ClientLogin::encode(Buffer::Instance& out) {
     } else {
       BufferHelper::addString(out, auth_resp_);
       BufferHelper::addUint8(out, -1);
-    }
-  } else {
-    BufferHelper::addUint32(out, client_cap_);
-    BufferHelper::addUint32(out, max_packet_);
-    BufferHelper::addUint8(out, charset_);
-    for (int idx = 0; idx < UNSET_BYTES; idx++) {
-      BufferHelper::addUint8(out, 0);
-    }
-    if (!username_.empty()) {
-      BufferHelper::addString(out, username_);
-    }
-    BufferHelper::addUint8(out, enc_end_string);
-    if (client_cap_ & CLIENT_PLUGIN_AUTH_LENENC_CLIENT_DATA) {
-      BufferHelper::addLengthEncodedInteger(out, auth_resp_.size());
-      BufferHelper::addString(out, auth_resp_);
-    } else if (client_cap_ & MYSQL_CLIENT_SECURE_CONNECTION) {
-      /* server supports the secure-auth (4.1+) which is 255 bytes max
-       *
-       * if ->len is longer than 255, wrap around ... should be reported back
-       * to the upper layers
-       */
-      BufferHelper::addUint8(out, auth_resp_.size());
-      BufferHelper::addStringBySize(out, auth_resp_.size() & 0xff, auth_resp_);
-    } else {
-      BufferHelper::addString(out, auth_resp_);
-      BufferHelper::addUint8(out, enc_end_string);
-    }
-    if ((client_cap_ & CLIENT_CONNECT_WITH_DB) && !db_.empty()) {
-      BufferHelper::addString(out, db_);
-      BufferHelper::addUint8(out, enc_end_string);
-    }
-    if ((client_cap_ & CLIENT_PLUGIN_AUTH) && !auth_plugin_name_.empty()) {
-      BufferHelper::addString(out, auth_plugin_name_);
-      BufferHelper::addUint8(out, enc_end_string);
-    }
-    if (client_cap_ & CLIENT_CONNECT_ATTRS) {
-      ENVOY_LOG(info, "proxy can not support connection attribute");
     }
   }
 }

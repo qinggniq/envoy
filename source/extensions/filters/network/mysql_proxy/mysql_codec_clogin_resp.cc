@@ -1,38 +1,284 @@
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
 
+#include "common/common/assert.h"
 #include "common/common/logger.h"
 #include "envoy/buffer/buffer.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
+#include "extensions/filters/network/mysql_proxy/mysql_codec_clogin.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
+#include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
 #include <bits/stdint-uintn.h>
+#include <string>
 
 namespace Envoy {
 namespace Extensions {
 namespace NetworkFilters {
 namespace MySQLProxy {
 
-void ClientLoginResponse::setRespCode(uint8_t resp_code) { resp_code_ = resp_code; }
-// Ok
-void ClientLoginResponse::setAffectedRows(uint8_t affected_rows) { affected_rows_ = affected_rows; }
-void ClientLoginResponse::setLastInsertId(uint8_t last_insert_id) {
-  last_insert_id_ = last_insert_id;
+ClientLoginResponse::AuthSwitchMessage::AuthSwitchMessage(
+    ClientLoginResponse::AuthSwitchMessage&& other) noexcept
+    : auth_plugin_data_(std::move(other.auth_plugin_data_)),
+      auth_plugin_name_(std::move(other.auth_plugin_name_)) {}
+
+ClientLoginResponse::AuthSwitchMessage& ClientLoginResponse::AuthSwitchMessage::operator=(
+    ClientLoginResponse::AuthSwitchMessage&& other) noexcept {
+  if (&other == this) {
+    return *this;
+  }
+  auth_plugin_data_ = std::move(other.auth_plugin_data_);
+  auth_plugin_name_ = std::move(other.auth_plugin_name_);
+  return *this;
 }
-void ClientLoginResponse::setServerStatus(uint16_t status) { server_status_ = status; }
-void ClientLoginResponse::setWarnings(uint16_t warnings) { warnings_ = warnings; }
-void ClientLoginResponse::setInfo(const std::string& info) { info_ = info; }
-// Err
-void ClientLoginResponse::setErrorCode(uint16_t error_code) { error_code_ = error_code; }
-void ClientLoginResponse::setSqlStateMarker(uint8_t marker) { marker_ = marker; }
-void ClientLoginResponse::setSqlState(const std::string& state) { sql_state_ = state; }
-void ClientLoginResponse::setErrorMessage(const std::string& message) { error_message_ = message; }
-// AuthSwitch
-void ClientLoginResponse::setAuthPluginData(const std::string& data) { auth_plugin_data_ = data; }
-void ClientLoginResponse::setAuthPluginName(const std::string& name) { auth_plugin_name_ = name; }
-// AuthMore
-void ClientLoginResponse::setAuthMoreData(const std::string& data) { more_plugin_data_ = data; }
+
+bool ClientLoginResponse::AuthSwitchMessage::operator==(
+    const ClientLoginResponse::AuthSwitchMessage& other) const {
+  return auth_plugin_data_ == other.auth_plugin_data_ &&
+         auth_plugin_name_ == other.auth_plugin_name_;
+}
+
+ClientLoginResponse::AuthMoreMessage::AuthMoreMessage(
+    ClientLoginResponse::AuthMoreMessage&& other) noexcept
+    : more_plugin_data_(std::move(other.more_plugin_data_)) {}
+
+ClientLoginResponse::AuthMoreMessage& ClientLoginResponse::AuthMoreMessage::operator=(
+    ClientLoginResponse::AuthMoreMessage&& other) noexcept {
+  if (&other == this) {
+    return *this;
+  }
+  more_plugin_data_ = std::move(other.more_plugin_data_);
+  return *this;
+}
+
+bool ClientLoginResponse::AuthMoreMessage::operator==(
+    const ClientLoginResponse::AuthMoreMessage& other) const {
+  return more_plugin_data_ == other.more_plugin_data_;
+}
+
+ClientLoginResponse::OkMessage::OkMessage(ClientLoginResponse::OkMessage&& other) noexcept
+    : affected_rows_(other.affected_rows_), last_insert_id_(other.last_insert_id_),
+      status_(other.status_), warnings_(other.warnings_), info_(std::move(other.info_)) {}
+
+ClientLoginResponse::OkMessage&
+ClientLoginResponse::OkMessage::operator=(ClientLoginResponse::OkMessage&& other) noexcept {
+  if (&other == this) {
+    return *this;
+  }
+  affected_rows_ = other.affected_rows_;
+  last_insert_id_ = other.last_insert_id_;
+  status_ = other.status_;
+  warnings_ = other.warnings_;
+  info_ = std::move(other.info_);
+  return *this;
+}
+
+bool ClientLoginResponse::OkMessage::operator==(const ClientLoginResponse::OkMessage& other) const {
+  return affected_rows_ == other.affected_rows_ && last_insert_id_ == other.last_insert_id_ &&
+         status_ == other.status_ && warnings_ == other.warnings_ && info_ == other.info_;
+}
+
+ClientLoginResponse::ErrMessage::ErrMessage(ClientLoginResponse::ErrMessage&& other) noexcept
+    : marker_(other.marker_), error_code_(other.error_code_), sql_state_(other.sql_state_),
+      error_message_(other.error_message_) {}
+
+ClientLoginResponse::ErrMessage&
+ClientLoginResponse::ErrMessage::operator=(ErrMessage&& other) noexcept {
+  if (&other == this) {
+    return *this;
+  }
+  error_code_ = other.error_code_;
+  marker_ = other.marker_;
+  sql_state_ = std::move(other.sql_state_);
+  error_message_ = std::move(other.error_message_);
+  return *this;
+}
+
+bool ClientLoginResponse::ErrMessage::operator==(const ErrMessage& other) const {
+  return error_code_ == other.error_code_ && marker_ == other.marker_ &&
+         sql_state_ == other.sql_state_ && error_message_ == other.error_message_;
+}
+
+void ClientLoginResponse::cleanup() {
+  // Need to manually delete because of the union.
+  switch (type_) {
+  case Ok:
+    ok_.~OkMessage();
+    break;
+  case Err:
+    err_.~ErrMessage();
+    break;
+  case AuthSwitch:
+    auth_switch_.~AuthSwitchMessage();
+    break;
+  case AuthMoreData:
+    auth_more_.~AuthMoreMessage();
+  default:
+    break;
+  }
+}
+
+void ClientLoginResponse::type(ClientLoginResponseType type) {
+  cleanup();
+  // Need to use placement new because of the union.
+  type_ = type;
+  switch (type_) {
+  case ClientLoginResponseType::Ok: {
+    new (&ok_) OkMessage();
+    break;
+  }
+  case ClientLoginResponseType::Err: {
+    new (&err_) ErrMessage();
+    break;
+  }
+  case ClientLoginResponseType::AuthSwitch: {
+    new (&auth_switch_) AuthSwitchMessage();
+    break;
+  }
+  case ClientLoginResponseType::AuthMoreData: {
+    new (&auth_more_) AuthMoreMessage();
+    break;
+  }
+  default:
+    break;
+  }
+}
+
+ClientLoginResponse::ClientLoginResponse(const ClientLoginResponse& other)
+    : type_(ClientLoginResponseType::Null) {
+  type(other.type_);
+  switch (type_) {
+  case Null:
+    break;
+  case AuthSwitch:
+    asAuthSwitchMessage() = other.asAuthSwitchMessage();
+    break;
+  case AuthMoreData:
+    asAuthMoreMessage() = other.asAuthMoreMessage();
+    break;
+  case Ok:
+    asOkMessage() = other.asOkMessage();
+    break;
+  case Err:
+    asErrMessage() = other.asErrMessage();
+    break;
+  default:
+    break;
+  }
+}
+ClientLoginResponse::ClientLoginResponse(ClientLoginResponse&& other) noexcept {
+  type(other.type_);
+  switch (type_) {
+  case Null:
+    break;
+  case AuthSwitch:
+    new (&auth_switch_) AuthSwitchMessage(std::move(other.auth_switch_));
+    break;
+  case AuthMoreData:
+    new (&auth_more_) AuthMoreMessage(std::move(other.auth_more_));
+    break;
+  case Ok:
+    new (&ok_) OkMessage(std::move(other.ok_));
+    break;
+  case Err:
+    new (&err_) ErrMessage(std::move(other.err_));
+    break;
+  default:
+    break;
+  }
+}
+
+ClientLoginResponse& ClientLoginResponse::operator=(const ClientLoginResponse& other) {
+  if (&other == this) {
+    return *this;
+  }
+
+  type(other.type_);
+  switch (type_) {
+  case Null:
+    break;
+  case AuthSwitch:
+    asAuthSwitchMessage() = other.asAuthSwitchMessage();
+    break;
+  case AuthMoreData:
+    asAuthMoreMessage() = other.asAuthMoreMessage();
+    break;
+  case Ok:
+    asOkMessage() = other.asOkMessage();
+    break;
+  case Err:
+    asErrMessage() = other.asErrMessage();
+    break;
+  default:
+    break;
+  }
+  return *this;
+}
+ClientLoginResponse& ClientLoginResponse::operator=(ClientLoginResponse&& other) noexcept {
+  if (&other == this) {
+    return *this;
+  }
+  type(other.type_);
+  switch (type_) {
+  case Null:
+    break;
+  case AuthSwitch:
+    auth_switch_ = std::move(other.auth_switch_);
+    break;
+  case AuthMoreData:
+    auth_more_ = std::move(other.auth_more_);
+    break;
+  case Ok:
+    ok_ = std::move(other.ok_);
+    break;
+  case Err:
+    err_ = std::move(other.err_);
+    break;
+  default:
+    break;
+  }
+  return *this;
+}
+
+ClientLoginResponse::AuthMoreMessage& ClientLoginResponse::asAuthMoreMessage() {
+  ASSERT(type_ == AuthMoreData);
+  return auth_more_;
+}
+
+const ClientLoginResponse::AuthMoreMessage& ClientLoginResponse::asAuthMoreMessage() const {
+  ASSERT(type_ == AuthMoreData);
+  return auth_more_;
+}
+
+ClientLoginResponse::AuthSwitchMessage& ClientLoginResponse::asAuthSwitchMessage() {
+  ASSERT(type_ == AuthSwitch);
+  return auth_switch_;
+}
+
+const ClientLoginResponse::AuthSwitchMessage& ClientLoginResponse::asAuthSwitchMessage() const {
+  ASSERT(type_ == AuthSwitch);
+  return auth_switch_;
+}
+
+ClientLoginResponse::OkMessage& ClientLoginResponse::asOkMessage() {
+  ASSERT(type_ == Ok);
+  return ok_;
+}
+const ClientLoginResponse::OkMessage& ClientLoginResponse::asOkMessage() const {
+  ASSERT(type_ == Ok);
+  return ok_;
+}
+
+ClientLoginResponse::ErrMessage& ClientLoginResponse::asErrMessage() {
+  ASSERT(type_ == Ok);
+  return err_;
+}
+const ClientLoginResponse::ErrMessage& ClientLoginResponse::asErrMessage() const {
+  ASSERT(type_ == Ok);
+  return err_;
+}
+
 int ClientLoginResponse::parseMessage(Buffer::Instance& buffer, uint32_t len) {
   uint8_t resp_code;
-  if (BufferHelper::peekUint8(buffer, resp_code) != MYSQL_SUCCESS) {
+  if (BufferHelper::readUint8(buffer, resp_code) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing response code in mysql Login response msg");
     return MYSQL_FAILURE;
   }
@@ -53,54 +299,47 @@ int ClientLoginResponse::parseMessage(Buffer::Instance& buffer, uint32_t len) {
 // https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::AuthSwitchRequest
 int ClientLoginResponse::parseAuthSwitch(Buffer::Instance& buffer, uint32_t) {
   // OldAuthSwitchRequest
-  type_ = OldAuthSwitch;
-  if (BufferHelper::readUint8(buffer, resp_code_) != MYSQL_SUCCESS) {
-    ENVOY_LOG(info, "error parsing response code in mysql Login response msg");
-    return MYSQL_FAILURE;
-  }
+  type(AuthSwitch);
   if (BufferHelper::endOfBuffer(buffer)) {
+    auth_switch_.setIsOldAuthSwitch(true);
     return MYSQL_SUCCESS;
   }
-  type_ = PluginAuthSwitch;
-  if (BufferHelper::readString(buffer, auth_plugin_name_) != MYSQL_SUCCESS) {
+  if (BufferHelper::readString(buffer, auth_switch_.auth_plugin_name_) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing auth plugin name mysql Login response msg");
     return MYSQL_FAILURE;
   }
-  if (BufferHelper::readStringEof(buffer, auth_plugin_data_) != MYSQL_SUCCESS) {
+  if (BufferHelper::readStringEof(buffer, auth_switch_.auth_plugin_data_) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing auth plugin data code in mysql Login Ok msg");
     return MYSQL_FAILURE;
   }
+  auth_switch_.setIsOldAuthSwitch(false);
   return MYSQL_SUCCESS;
 }
 
 // https://dev.mysql.com/doc/internals/en/packet-OK_Packet.html
 int ClientLoginResponse::parseOk(Buffer::Instance& buffer, uint32_t) {
-  type_ = Ok;
-  if (BufferHelper::readUint8(buffer, resp_code_) != MYSQL_SUCCESS) {
-    ENVOY_LOG(info, "error parsing response code in mysql Login response msg");
-    return MYSQL_FAILURE;
-  }
-  if (BufferHelper::readLengthEncodedInteger(buffer, affected_rows_) != MYSQL_SUCCESS) {
+  type(Ok);
+  if (BufferHelper::readLengthEncodedInteger(buffer, ok_.affected_rows_) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing affected_rows in mysql Login Ok msg");
     return MYSQL_FAILURE;
   }
-  if (BufferHelper::readLengthEncodedInteger(buffer, last_insert_id_) != MYSQL_SUCCESS) {
+  if (BufferHelper::readLengthEncodedInteger(buffer, ok_.last_insert_id_) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing last_insert_id in mysql Login Ok msg");
     return MYSQL_FAILURE;
   }
 
-  if (BufferHelper::readUint16(buffer, server_status_) != MYSQL_SUCCESS) {
-    ENVOY_LOG(info, "error parsing server_status in mysql Login Ok msg");
+  if (BufferHelper::readUint16(buffer, ok_.status_) != MYSQL_SUCCESS) {
+    ENVOY_LOG(info, "error parsing status in mysql Login Ok msg");
     return MYSQL_FAILURE;
   }
   // the exist of warning feild is determined by server cap flag, but a decoder can not know the
   // cap flag, so just assume the CLIENT_PROTOCOL_41 is always set. ref
   // https://github.com/mysql/mysql-connector-j/blob/release/8.0/src/main/protocol-impl/java/com/mysql/cj/protocol/a/result/OkPacket.java#L48
-  if (BufferHelper::readUint16(buffer, warnings_) != MYSQL_SUCCESS) {
+  if (BufferHelper::readUint16(buffer, ok_.warnings_) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing warnings in mysql Login Ok msg");
     return MYSQL_FAILURE;
   }
-  if (BufferHelper::readString(buffer, info_) != MYSQL_SUCCESS) {
+  if (BufferHelper::readString(buffer, ok_.info_) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing info in mysql Login Ok msg");
     return MYSQL_FAILURE;
   }
@@ -109,24 +348,21 @@ int ClientLoginResponse::parseOk(Buffer::Instance& buffer, uint32_t) {
 
 // https://dev.mysql.com/doc/internals/en/packet-ERR_Packet.html
 int ClientLoginResponse::parseErr(Buffer::Instance& buffer, uint32_t) {
-  type_ = Err;
-  if (BufferHelper::readUint8(buffer, resp_code_) != MYSQL_SUCCESS) {
-    ENVOY_LOG(info, "error parsing response code in mysql Login response msg");
-    return MYSQL_FAILURE;
-  }
-  if (BufferHelper::readUint16(buffer, error_code_) != MYSQL_RESP_OK) {
+  type(Err);
+  if (BufferHelper::readUint16(buffer, err_.error_code_) != MYSQL_RESP_OK) {
     ENVOY_LOG(info, "error parsing error code in mysql Login error msg");
     return MYSQL_FAILURE;
   }
-  if (BufferHelper::readUint8(buffer, marker_) != MYSQL_RESP_OK) {
+  if (BufferHelper::readUint8(buffer, err_.marker_) != MYSQL_RESP_OK) {
     ENVOY_LOG(info, "error parsing sql state marker in mysql Login error msg");
     return MYSQL_FAILURE;
   }
-  if (BufferHelper::readStringBySize(buffer, MYSQL_SQL_STATE_LEN, sql_state_) != MYSQL_RESP_OK) {
+  if (BufferHelper::readStringBySize(buffer, MYSQL_SQL_STATE_LEN, err_.sql_state_) !=
+      MYSQL_RESP_OK) {
     ENVOY_LOG(info, "error parsing sql state in mysql Login error msg");
     return MYSQL_FAILURE;
   }
-  if (BufferHelper::readStringEof(buffer, error_message_) != MYSQL_SUCCESS) {
+  if (BufferHelper::readStringEof(buffer, err_.error_message_) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing error message in mysql Login error msg");
     return MYSQL_FAILURE;
   }
@@ -135,12 +371,8 @@ int ClientLoginResponse::parseErr(Buffer::Instance& buffer, uint32_t) {
 
 // https://dev.mysql.com/doc/internals/en/connection-phase-packets.html#packet-Protocol::AuthMoreData
 int ClientLoginResponse::parseAuthMore(Buffer::Instance& buffer, uint32_t) {
-  type_ = AuthMoreData;
-  if (BufferHelper::readUint8(buffer, resp_code_) != MYSQL_SUCCESS) {
-    ENVOY_LOG(info, "error parsing response code in mysql Login response msg");
-    return MYSQL_FAILURE;
-  }
-  if (BufferHelper::readStringEof(buffer, more_plugin_data_) != MYSQL_SUCCESS) {
+  type(AuthMoreData);
+  if (BufferHelper::readStringEof(buffer, auth_more_.more_plugin_data_) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing more plugin data in mysql Login auth more msg");
     return MYSQL_FAILURE;
   }
@@ -148,57 +380,58 @@ int ClientLoginResponse::parseAuthMore(Buffer::Instance& buffer, uint32_t) {
 }
 
 void ClientLoginResponse::encode(Buffer::Instance& out) {
-  switch (resp_code_) {
-  case MYSQL_RESP_AUTH_SWITCH:
+  switch (type_) {
+  case AuthSwitch:
     encodeAuthSwitch(out);
     break;
-  case MYSQL_RESP_OK:
+  case Ok:
     encodeOk(out);
     break;
-  case MYSQL_RESP_ERR:
+  case Err:
     encodeErr(out);
     break;
-  case MYSQL_RESP_MORE:
+  case AuthMoreData:
     encodeAuthMore(out);
+    break;
+  default:
     break;
   }
 }
 
 void ClientLoginResponse::encodeAuthSwitch(Buffer::Instance& out) {
-  BufferHelper::addUint8(out, resp_code_);
-  if (auth_plugin_name_.empty()) {
-    // OldAuthSwitch
+  BufferHelper::addUint8(out, MYSQL_RESP_AUTH_SWITCH);
+  if (auth_switch_.isOldAuthSwitch()) {
     return;
   }
-  BufferHelper::addString(out, auth_plugin_name_);
+  BufferHelper::addString(out, auth_switch_.auth_plugin_name_);
   BufferHelper::addUint8(out, 0);
-  BufferHelper::addString(out, auth_plugin_data_);
-  BufferHelper::addUint8(out, -1);
+  BufferHelper::addString(out, auth_switch_.auth_plugin_data_);
+  BufferHelper::addUint8(out, EOF);
 }
 
 void ClientLoginResponse::encodeOk(Buffer::Instance& out) {
-  BufferHelper::addUint8(out, resp_code_);
-  BufferHelper::addLengthEncodedInteger(out, affected_rows_);
-  BufferHelper::addLengthEncodedInteger(out, last_insert_id_);
-  BufferHelper::addUint16(out, server_status_);
-  BufferHelper::addUint16(out, warnings_);
-  BufferHelper::addString(out, info_);
-  BufferHelper::addUint8(out, -1);
+  BufferHelper::addUint8(out, MYSQL_RESP_OK);
+  BufferHelper::addLengthEncodedInteger(out, ok_.affected_rows_);
+  BufferHelper::addLengthEncodedInteger(out, ok_.last_insert_id_);
+  BufferHelper::addUint16(out, ok_.status_);
+  BufferHelper::addUint16(out, ok_.warnings_);
+  BufferHelper::addString(out, ok_.info_);
+  BufferHelper::addUint8(out, EOF);
 }
 
 void ClientLoginResponse::encodeErr(Buffer::Instance& out) {
-  BufferHelper::addUint8(out, resp_code_);
-  BufferHelper::addUint16(out, error_code_);
-  BufferHelper::addUint8(out, marker_);
-  BufferHelper::addString(out, sql_state_);
-  BufferHelper::addString(out, error_message_);
-  BufferHelper::addUint8(out, -1);
+  BufferHelper::addUint8(out, MYSQL_RESP_ERR);
+  BufferHelper::addUint16(out, err_.error_code_);
+  BufferHelper::addUint8(out, err_.marker_);
+  BufferHelper::addString(out, err_.sql_state_);
+  BufferHelper::addString(out, err_.error_message_);
+  BufferHelper::addUint8(out, EOF);
 }
 
 void ClientLoginResponse::encodeAuthMore(Buffer::Instance& out) {
-  BufferHelper::addUint8(out, resp_code_);
-  BufferHelper::addString(out, more_plugin_data_);
-  BufferHelper::addUint8(out, -1);
+  BufferHelper::addUint8(out, MYSQL_RESP_MORE);
+  BufferHelper::addString(out, auth_more_.more_plugin_data_);
+  BufferHelper::addUint8(out, EOF);
 }
 
 } // namespace MySQLProxy

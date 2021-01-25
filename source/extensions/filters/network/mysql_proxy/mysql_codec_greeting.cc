@@ -44,8 +44,7 @@ void ServerGreeting::setServerStatus(uint16_t server_status) { server_status_ = 
 
 void ServerGreeting::setAuthPluginName(const std::string& name) { auth_plugin_name_ = name; }
 
-int ServerGreeting::parseMessage(Buffer::Instance& buffer, uint32_t len) {
-  uint32_t buffer_length = buffer.length();
+int ServerGreeting::parseMessage(Buffer::Instance& buffer, uint32_t) {
   uint8_t auth_plugin_data_len = 0;
   // parsing logic from
   // https://github.com/mysql/mysql-proxy/blob/ca6ad61af9088147a568a079c44d0d322f5bee59/src/network-mysqld-packet.c#L1171
@@ -98,7 +97,6 @@ int ServerGreeting::parseMessage(Buffer::Instance& buffer, uint32_t len) {
     ENVOY_LOG(info, "error parsing auth_plugin_data_len in mysql Greeting msg");
     return MYSQL_FAILURE;
   }
-
   if (BufferHelper::readBytes(buffer, 10) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing reserved in mysql Greeting msg");
     return MYSQL_FAILURE;
@@ -113,25 +111,12 @@ int ServerGreeting::parseMessage(Buffer::Instance& buffer, uint32_t len) {
       ENVOY_LOG(info, "error skiping auth_plugin_data2 in mysql Greeting msg");
       return MYSQL_FAILURE;
     }
-    int skiped_bytes = 12 > auth_plugin_data_len2 ? auth_plugin_data_len2 : 12;
+    int skiped_bytes = 12 - (12 > auth_plugin_data_len2 ? auth_plugin_data_len2 : 12);
     if (BufferHelper::readBytes(buffer, skiped_bytes) != MYSQL_SUCCESS) {
       ENVOY_LOG(info, "error skiping in mysql Greeting msg");
       return MYSQL_FAILURE;
     }
-    /* Bug#59453 ... MySQL 5.5.7-9 and 5.6.0-1 don't send a trailing \0
-     *
-     * if there is no trailing \0, get the rest of the packet
-     */
-    // buffer might containe the next package frame, so we need to make sure the tail \0 is not
-    // belong to next package frame
-    char end = MYSQL_STR_END;
-    ssize_t index = buffer.search(&end, sizeof(end), 0);
-    uint32_t remain_len = len - (buffer_length - buffer.length());
-    // this frame have tail
-    if (index != -1 && index < remain_len) {
-      remain_len = index;
-    }
-    if (BufferHelper::readStringBySize(buffer, remain_len, auth_plugin_name_) != MYSQL_SUCCESS) {
+    if (BufferHelper::readString(buffer, auth_plugin_name_) != MYSQL_SUCCESS) {
       ENVOY_LOG(info, "error parsing auth_plugin_name in mysql Greeting msg");
       return MYSQL_FAILURE;
     }

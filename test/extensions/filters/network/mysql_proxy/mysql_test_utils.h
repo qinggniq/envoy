@@ -26,9 +26,9 @@ class MySQLTestUtils {
 
 public:
   static std::string getAuthPluginData8() { return "!@salt#$"; }
-  static std::string getAuthPluginData20() { return "!@salt#$!@salt#$xx"; }
+  static std::string getAuthPluginData20() { return "!@salt#$!@salt#$xxXX"; }
   static std::string getAuthResp8() { return "p4$$w0r6"; }
-  static std::string getAuthResp20() { return "p4$$w0r6p4$$w0r611"; }
+  static std::string getAuthResp20() { return "p4$$w0r6p4$$w0r61111"; }
   static std::string getVersion() {
     return fmt::format("{0}.{1}.{2}", MYSQL_VER_MAJOR, MYSQL_VER_MINOR, MYSQL_VER_VAR);
   }

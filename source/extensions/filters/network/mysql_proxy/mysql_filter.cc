@@ -7,6 +7,7 @@
 #include "common/common/assert.h"
 #include "common/common/logger.h"
 
+#include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
 #include "extensions/filters/network/well_known_names.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
@@ -139,25 +140,29 @@ void MySQLFilter::onAuthFailure(std::string&& reason) {
 }
 
 void MySQLFilter::onClientLoginResponse(ClientLoginResponse& client_login_resp) {
-  switch (client_login_resp.getRespCode()) {
-  case MYSQL_RESP_OK:
+  switch (client_login_resp.type()) {
+  case Ok:
     // we auth downstream at @onClientLogin send auth response to downstream at
     // @onClientLoginResponse or auth at @onClientSwitchResponse send at @onMoreClientLoginResponse,
     // in this way we can guarantee the message seq
     writeDownstream(client_login_resp);
     break;
-  case MYSQL_RESP_AUTH_SWITCH:
+  case AuthSwitch:
     config_->stats_.auth_switch_request_.inc();
-    if (!client_login_resp.isOldAuthSwitchRequest()) {
+    if (client_login_resp.type() == AuthSwitch &&
+        client_login_resp.asAuthSwitchMessage().isOldAuthSwitch()) {
       onAuthFailure("proxy cannot support auth plugin");
       return;
     }
     writeDownstream(client_login_resp);
     break;
-  case MYSQL_RESP_ERR:
+  case Err:
     config_->stats_.login_failures_.inc();
     ENVOY_LOG(error, "can not connect to upstream cluster");
     onAuthFailure("proxy failed to connect to upstream server");
+    break;
+  case AuthMoreData:
+  default:
     break;
   }
 }
@@ -171,7 +176,7 @@ void MySQLFilter::onClientSwitchResponse(ClientSwitchResponse& client_switch_res
 }
 
 void MySQLFilter::onMoreClientLoginResponse(ClientLoginResponse& client_login_resp) {
-  if (client_login_resp.getRespCode() == MYSQL_RESP_ERR) {
+  if (client_login_resp.type() == Err) {
     config_->stats_.login_failures_.inc();
     onAuthFailure("upstream server auth fail");
   }
