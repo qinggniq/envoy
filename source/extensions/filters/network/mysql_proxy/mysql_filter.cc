@@ -225,18 +225,17 @@ void MySQLFilter::writeDownstream(Buffer::Instance& data) {
 
 void MySQLFilter::writeDownstream(MySQLCodec& codec) {
   Buffer::OwnedImpl buffer;
-  // TODO need to compact as packet
   codec.encode(buffer);
   writeDownstream(buffer);
 }
 
 void MySQLFilter::onServerGreeting(ServerGreeting& sg) {
   Buffer::OwnedImpl buffer;
-  seed_ = sg.getAuthPluginData();
+  sg.seed_ = sg.getAuthPluginData();
   upstream_auth_method_ = AuthHelper::authMethod(sg.getServerCap(), sg.getExtServerCap());
-  // TODO(qinggniq) judge the server version, now mysql proxy only support version under 5.5 version
   sg.encode(buffer);
   writeDownstream(buffer);
+  
 }
 
 } // namespace MySQLProxy
