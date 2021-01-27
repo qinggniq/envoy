@@ -15,18 +15,20 @@ envoy_extension_package()
 envoy_cc_library(
     name = "proxy_lib",
     srcs = [
+        "mysql_client_impl.cc",
         "mysql_codec_clogin.cc",
         "mysql_codec_clogin_resp.cc",
         "mysql_codec_command.cc",
         "mysql_codec_greeting.cc",
         "mysql_codec_switch_resp.cc",
         "mysql_decoder.cc",
-        "mysql_session.cc",
         "mysql_filter.cc",
+        "mysql_session.cc",
         "mysql_utils.cc",
-        "mysql_client_impl.cc"
     ],
     hdrs = [
+        "mysql_client.h",
+        "mysql_client_impl.h",
         "mysql_codec.h",
         "mysql_codec_clogin.h",
         "mysql_codec_clogin_resp.h",
@@ -37,8 +39,6 @@ envoy_cc_library(
         "mysql_filter.h",
         "mysql_session.h",
         "mysql_utils.h",
-        "mysql_client.h",
-        "mysql_client_impl.h",
     ],
     deps = [
         "//include/envoy/network:filter_interface",
@@ -46,8 +46,8 @@ envoy_cc_library(
         "//include/envoy/stats:stats_interface",
         "//include/envoy/stats:stats_macros",
         "//include/envoy/upstream:cluster_manager_interface",
-        "//source/common/config:datasource_lib",
         "//source/common/buffer:buffer_lib",
+        "//source/common/config:datasource_lib",
         "//source/common/network:filter_lib",
         "//source/extensions/common/sqlutils:sqlutils_lib",
         "//source/extensions/filters/network:well_known_names",
@@ -65,7 +65,6 @@ envoy_cc_extension(
         ":proxy_lib",
         "//source/extensions/filters/network:well_known_names",
         "//source/extensions/filters/network/common:factory_base_lib",
-        "@envoy_api//envoy/extensions/filters/network/mysql_proxy/v3alpha:pkg_cc_proto",
         "@envoy_api//envoy/extensions/filters/network/mysql_proxy/v3:pkg_cc_proto",
     ],
 )

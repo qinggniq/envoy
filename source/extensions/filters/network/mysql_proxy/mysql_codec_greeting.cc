@@ -1,10 +1,9 @@
 #include "extensions/filters/network/mysql_proxy/mysql_codec_greeting.h"
 
 #include "envoy/buffer/buffer.h"
+
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
-#include "source/extensions/filters/network/mysql_proxy/_virtual_includes/proxy_lib/extensions/filters/network/mysql_proxy/mysql_utils.h"
-#include <bits/stdint-uintn.h>
 
 namespace Envoy {
 namespace Extensions {
@@ -182,7 +181,7 @@ void ServerGreeting::encode(Buffer::Instance& out) {
   if (server_cap_ & CLIENT_PLUGIN_AUTH) {
     BufferHelper::addString(out, auth_plugin_data2_);
     BufferHelper::addString(out, auth_plugin_name_);
-    // TODO(qinggniq) judge version 5.5.7-9 and 5.6.0-1 which should not add tail
+    // TODO(qinggniq) version 5.5.7-9 and 5.6.0-1 will not add tail \0
     BufferHelper::addUint8(out, enc_end_string);
   } else if (server_cap_ & CLIENT_SECURE_CONNECTION) {
     BufferHelper::addString(out, auth_plugin_data2_);

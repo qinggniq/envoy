@@ -1,7 +1,11 @@
 #pragma once
 #include <bits/stdint-uintn.h>
-#include <cstdint>
+#include <openssl/digest.h>
+#include <openssl/sha.h>
 #include <unistd.h>
+
+#include <cstdint>
+#include <functional>
 
 #include "envoy/buffer/buffer.h"
 #include "envoy/common/platform.h"
@@ -16,10 +20,6 @@
 #include "extensions/filters/network/mysql_proxy/mysql_codec_greeting.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_switch_resp.h"
 #include "extensions/filters/network/mysql_proxy/mysql_session.h"
-
-#include <openssl/sha.h>
-#include <openssl/digest.h>
-#include <functional>
 
 namespace Envoy {
 namespace Extensions {
@@ -64,7 +64,7 @@ public:
 enum AuthMethod {
   OldPassword,
   NativePassword,
-  PluginAuth,
+  CacheSha2Password,
 };
 
 /**
@@ -73,11 +73,13 @@ enum AuthMethod {
  */
 class AuthHelper : public Logger::Loggable<Logger::Id::filter> {
 public:
-  // judge the auth mehod by cap flag
+  // judge the auth method by cap flag
   static AuthMethod authMethod(uint16_t cap, uint16_t ext_cap);
 
   static std::string oldPasswordSignature(const std::string& password, const std::string& seed);
   static std::string nativePasswordSignature(const std::string& password, const std::string& seed);
+  static std::string cacheSha2PasswordSignature(const std::string& password,
+                                                const std::string& seed);
 
   static bool oldPasswordVerify(const std::string& password, const std::string& seed,
                                 const std::string sig);
@@ -85,8 +87,11 @@ public:
   static bool nativePasswordVerify(const std::string& password, const std::string& seed,
                                    const std::string sig);
 
+  static bool cacheSha2PasswordVerify(const std::string& password, const std::string& seed,
+                                      const std::string sig);
+
 private:
-  // client use password and seed cacluate the signature as auth response
+  // client use password and seed to calculate the signature as auth response
   template <const EVP_MD* (*ShaType)(), int DigestSize>
   static std::string signature(const std::string& password, const std::string& seed);
   /*
@@ -99,6 +104,28 @@ private:
    */
   template <const EVP_MD* (*ShaType)(), int DigestSize>
   static bool verify(const std::string& password, const std::string& seed, const std::string& sig);
+
+  /*
+   * Generate binary hash from raw text string
+   * Used for Pre-4.1 password handling
+   */
+  static std::vector<ulong> oldHash(const std::string& text);
+  struct RandStruct {
+    RandStruct(ulong seed1, ulong seed2);
+    /*
+     *Generate random number.
+     * SYNOPSIS
+     * MyRand()
+     *  RETURN VALUE
+     * generated pseudo random number
+     */
+    double myRnd();
+    unsigned long seed1, seed2, max_value;
+    double max_value_dbl;
+  };
+
+private:
+  static constexpr int SCRAMBLE_LENGTH_323 = 16;
 };
 
 } // namespace MySQLProxy

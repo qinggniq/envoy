@@ -1,10 +1,9 @@
 #pragma once
-#include <bits/stdint-uintn.h>
-#include <cstdint>
+
+#include "envoy/buffer/buffer.h"
 
 #include "common/buffer/buffer_impl.h"
 
-#include "envoy/buffer/buffer.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin.h"
 
@@ -15,7 +14,7 @@ namespace MySQLProxy {
 
 enum ClientLoginResponseType { Null, Ok, Err, AuthSwitch, AuthMoreData };
 
-// ClientLoginResponse colud be
+// ClientLoginResponse could be
 // Protocol::OldAuthSwitchRequest, Protocol::AuthSwitchRequest when server want switch auth method
 // or OK_Packet, ERR_Packet when server auth ok or error
 class ClientLoginResponse : public MySQLCodec {
@@ -83,13 +82,11 @@ public:
     OkMessage& operator=(const OkMessage&) = default;
     OkMessage& operator=(OkMessage&&) noexcept;
     bool operator==(const OkMessage&) const;
-    // Ok
     void setAffectedRows(uint64_t affected_rows) { affected_rows_ = affected_rows; }
     void setLastInsertId(uint64_t last_insert_id) { last_insert_id_ = last_insert_id; }
     void setServerStatus(uint16_t status) { status_ = status; }
     void setWarnings(uint16_t warnings) { warnings_ = warnings; }
     void setInfo(const std::string& info) { info_ = info; }
-    // Ok
     uint64_t getAffectedRows() const { return affected_rows_; }
     uint64_t getLastInsertId() const { return last_insert_id_; }
     uint16_t getServerStatus() const { return status_; }
@@ -114,12 +111,10 @@ public:
     ErrMessage& operator=(const ErrMessage&) = default;
     ErrMessage& operator=(ErrMessage&&) noexcept;
     bool operator==(const ErrMessage&) const;
-    // Err
     void setErrorCode(uint16_t error_code) { error_code_ = error_code; }
     void setSqlStateMarker(uint8_t marker) { marker_ = marker; }
     void setSqlState(const std::string& state) { sql_state_ = state; }
     void setErrorMessage(const std::string& msg) { error_message_ = msg; }
-    // Err
     uint16_t getErrorCode() const { return error_code_; }
     uint8_t getSqlStateMarker() const { return marker_; }
     std::string getSqlState() const { return sql_state_; }

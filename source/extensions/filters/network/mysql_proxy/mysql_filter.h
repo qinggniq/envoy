@@ -9,6 +9,7 @@
 
 #include "common/common/logger.h"
 
+#include "extensions/filters/network/mysql_proxy/mysql_client.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
@@ -17,7 +18,6 @@
 #include "extensions/filters/network/mysql_proxy/mysql_codec_switch_resp.h"
 #include "extensions/filters/network/mysql_proxy/mysql_decoder.h"
 #include "extensions/filters/network/mysql_proxy/mysql_session.h"
-#include "extensions/filters/network/mysql_proxy/mysql_client.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
 
 namespace Envoy {

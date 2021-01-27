@@ -1,8 +1,9 @@
 #pragma once
+#include "envoy/buffer/buffer.h"
+
 #include "common/buffer/buffer_impl.h"
 
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
-#include <bits/stdint-uintn.h>
 
 namespace Envoy {
 namespace Extensions {
@@ -42,6 +43,12 @@ public:
   void setAuthPluginName(const std::string& auth_plugin_name);
 
 private:
+  int parseResponseSsl(Buffer::Instance& buffer);
+  int parseResponse41(Buffer::Instance& buffer);
+  int parseResponse320(Buffer::Instance& buffer);
+  void encodeResponseSsl(Buffer::Instance& out);
+  void encodeResponse41(Buffer::Instance& out);
+  void encodeResponse320(Buffer::Instance& out);
   union {
     uint32_t client_cap_;
     struct {

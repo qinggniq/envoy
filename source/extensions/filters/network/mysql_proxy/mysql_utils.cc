@@ -1,11 +1,13 @@
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
-#include "common/buffer/buffer_impl.h"
+
+#include <iterator>
+
 #include "envoy/buffer/buffer.h"
 #include "envoy/common/exception.h"
-#include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 
-#include <bits/stdint-uintn.h>
-#include <iterator>
+#include "common/buffer/buffer_impl.h"
+
+#include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -66,7 +68,6 @@ int BufferHelper::readUint8(Buffer::Instance& buffer, uint8_t& val) {
     buffer.drain(sizeof(uint8_t));
     return MYSQL_SUCCESS;
   } catch (EnvoyException& e) {
-    // buffer underflow
     return MYSQL_FAILURE;
   }
 }
@@ -77,7 +78,6 @@ int BufferHelper::readUint16(Buffer::Instance& buffer, uint16_t& val) {
     buffer.drain(sizeof(uint16_t));
     return MYSQL_SUCCESS;
   } catch (EnvoyException& e) {
-    // buffer underflow
     return MYSQL_FAILURE;
   }
 }
@@ -88,7 +88,6 @@ int BufferHelper::readUint24(Buffer::Instance& buffer, uint32_t& val) {
     buffer.drain(sizeof(uint8_t) * 3);
     return MYSQL_SUCCESS;
   } catch (EnvoyException& e) {
-    // buffer underflow
     return MYSQL_FAILURE;
   }
 }
@@ -99,7 +98,6 @@ int BufferHelper::readUint32(Buffer::Instance& buffer, uint32_t& val) {
     buffer.drain(sizeof(uint32_t));
     return MYSQL_SUCCESS;
   } catch (EnvoyException& e) {
-    // buffer underflow
     return MYSQL_FAILURE;
   }
 }
@@ -130,7 +128,6 @@ int BufferHelper::readLengthEncodedInteger(Buffer::Instance& buffer, uint64_t& v
       return MYSQL_FAILURE;
     }
   } catch (EnvoyException& e) {
-    // buffer underflow
     return MYSQL_FAILURE;
   }
 
@@ -187,7 +184,6 @@ int BufferHelper::peekUint32(Buffer::Instance& buffer, uint32_t& val) {
     val = buffer.peekLEInt<uint32_t>(0);
     return MYSQL_SUCCESS;
   } catch (EnvoyException& e) {
-    // buffer underflow
     return MYSQL_FAILURE;
   }
 }
@@ -197,7 +193,6 @@ int BufferHelper::peekUint16(Buffer::Instance& buffer, uint16_t& val) {
     val = buffer.peekLEInt<uint16_t>(0);
     return MYSQL_SUCCESS;
   } catch (EnvoyException& e) {
-    // buffer undeflow
     return MYSQL_FAILURE;
   }
 }
@@ -207,7 +202,6 @@ int BufferHelper::peekUint8(Buffer::Instance& buffer, uint8_t& val) {
     val = buffer.peekLEInt<uint8_t>(0);
     return MYSQL_SUCCESS;
   } catch (EnvoyException& e) {
-    // buffer undeflow
     return MYSQL_FAILURE;
   }
 }
@@ -228,8 +222,8 @@ AuthMethod AuthHelper::authMethod(uint16_t cap, uint16_t ext_cap) {
   /*
    * https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase.html
    */
-  bool v41 = cap & MYSQL_CLIENT_CAPAB_41VS320;
-  bool sconn = cap & MYSQL_CLIENT_SECURE_CONNECTION;
+  bool v41 = cap & CLIENT_PROTOCOL_41;
+  bool sconn = cap & CLIENT_SECURE_CONNECTION;
   bool plugin = ext_cap & MYSQL_EXT_CL_PLUGIN_AUTH;
   if (!v41 || !sconn) {
     return AuthMethod::OldPassword;
@@ -237,18 +231,36 @@ AuthMethod AuthHelper::authMethod(uint16_t cap, uint16_t ext_cap) {
   if (v41 && sconn && !plugin) {
     return AuthMethod::NativePassword;
   }
-  return AuthMethod::PluginAuth;
+  return AuthMethod::CacheSha2Password;
 }
 
+// ref https://github.com/mysql/mysql-server/blob/5.5/sql/password.c#L186
 std::string AuthHelper::oldPasswordSignature(const std::string& password, const std::string& seed) {
-  return signature<EVP_sha1, SHA_DIGEST_LENGTH>(password, seed);
+  std::string to;
+  if (!password.empty()) {
+    to.resize(SCRAMBLE_LENGTH_323);
+    auto hash_pass = oldHash(password);
+    auto hash_seed = oldHash(seed);
+    RandStruct rand_st(hash_pass[0] ^ hash_seed[0], hash_pass[1] ^ hash_seed[1]);
+    for (int i = 0; i < SCRAMBLE_LENGTH_323; i++) {
+      to[i] = static_cast<char>((floor(rand_st.myRnd() * 31) + 64));
+    }
+    char extra = static_cast<char>(floor(rand_st.myRnd() * 31));
+    for (int i = 0; i < SCRAMBLE_LENGTH_323; i++) {
+      to[i] ^= extra;
+    }
+  }
+  return to;
 }
 
 std::string AuthHelper::nativePasswordSignature(const std::string& password,
                                                 const std::string& seed) {
+  return signature<EVP_sha1, SHA_DIGEST_LENGTH>(password, seed);
+}
+std::string AuthHelper::cacheSha2PasswordSignature(const std::string& password,
+                                                   const std::string& seed) {
   return signature<EVP_sha256, SHA256_DIGEST_LENGTH>(password, seed);
 }
-
 template <const EVP_MD* (*ShaType)(), int DigestSize>
 std::string AuthHelper::signature(const std::string& password, const std::string& seed) {
   // hashstage1 = sha(password)
@@ -272,19 +284,19 @@ std::string AuthHelper::signature(const std::string& password, const std::string
   rc = EVP_MD_CTX_reset(ctx.get());
   RELEASE_ASSERT(rc == 1, "Failed to reset digest context");
 
-  // toBeXored = sha(hashstage1, seed)
-  std::vector<uint8_t> to_be_xored(DigestSize);
+  // to_be_xor = sha(hashstage1, seed)
+  std::vector<uint8_t> to_be_xor(DigestSize);
   rc = EVP_DigestUpdate(ctx.get(), seed.data(), seed.size());
   RELEASE_ASSERT(rc == 1, "Failed to update digest");
   rc = EVP_DigestUpdate(ctx.get(), hashstage2.data(), hashstage2.size());
   RELEASE_ASSERT(rc == 1, "Failed to update digest");
-  rc = EVP_DigestFinal(ctx.get(), to_be_xored.data(), nullptr);
+  rc = EVP_DigestFinal(ctx.get(), to_be_xor.data(), nullptr);
   RELEASE_ASSERT(rc == 1, "Failed to finalize digest");
 
   for (int i = 0; i < DigestSize; i++) {
-    to_be_xored[i] = to_be_xored[i] ^ hashstage1[i];
+    to_be_xor[i] = to_be_xor[i] ^ hashstage1[i];
   }
-  return std::string(to_be_xored.begin(), to_be_xored.end());
+  return std::string(to_be_xor.begin(), to_be_xor.end());
 }
 
 bool AuthHelper::oldPasswordVerify(const std::string& password, const std::string& seed,
@@ -316,6 +328,38 @@ bool AuthHelper::verify(const std::string& password, const std::string& seed,
   }
   return true;
 }
+
+std::vector<ulong> AuthHelper::oldHash(const std::string& text) {
+  ulong nr = 1345345333L, add = 7, nr2 = 0x12345671L;
+  ulong tmp;
+  std::vector<ulong> result(SCRAMBLE_LENGTH_323 / sizeof(ulong));
+  for (const auto c : text) {
+    if (c == ' ' || c == '\t') {
+      continue;
+    }
+    tmp = static_cast<ulong>(c);
+    nr ^= (((nr & 63) + add) * tmp) + (nr << 8);
+    nr2 += (nr2 << 8) ^ nr;
+    add += tmp;
+  }
+  result.data()[0] = nr & ((static_cast<ulong>(1L) << 31) - 1L); /* Don't use sign bit (str2int) */
+  result.data()[1] = nr2 & ((static_cast<ulong>(1L) << 31) - 1L);
+  return result;
+}
+
+AuthHelper::RandStruct::RandStruct(ulong seed1, ulong seed2) {
+  max_value = 0x3FFFFFFFL;
+  max_value_dbl = static_cast<double>(max_value);
+  seed1 = seed1 % max_value;
+  seed2 = seed2 % max_value;
+}
+
+double AuthHelper::RandStruct::myRnd() {
+  seed1 = (seed1 * 3 + seed2) % max_value;
+  seed2 = (seed1 + seed2 + 33) % max_value;
+  return ((static_cast<double>(seed1)) / max_value_dbl);
+}
+
 } // namespace MySQLProxy
 } // namespace NetworkFilters
 } // namespace Extensions

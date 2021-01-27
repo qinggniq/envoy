@@ -1,10 +1,11 @@
 #include "envoy/buffer/buffer.h"
-#include "extensions/filters/network/mysql_proxy/mysql_client.h"
-
 #include "envoy/network/connection.h"
+
+#include "common/network/filter_impl.h"
+
+#include "extensions/filters/network/mysql_proxy/mysql_client.h"
 #include "extensions/filters/network/mysql_proxy/mysql_decoder.h"
 #include "extensions/filters/network/mysql_proxy/mysql_session.h"
-#include "common/network/filter_impl.h"
 
 namespace Envoy {
 namespace Extensions {

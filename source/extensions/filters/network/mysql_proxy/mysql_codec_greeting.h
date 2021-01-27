@@ -2,7 +2,6 @@
 #include "common/buffer/buffer_impl.h"
 
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
-#include <bits/stdint-uintn.h>
 
 namespace Envoy {
 namespace Extensions {
@@ -34,7 +33,6 @@ public:
   void setProtocol(uint8_t protocol);
   void setVersion(const std::string& version);
   void setThreadId(uint32_t thread_id);
-
   void setServerCap(uint32_t server_cap);
   void setBaseServerCap(uint16_t base_server_cap);
   void setExtServerCap(uint16_t ext_server_cap);
@@ -55,8 +53,8 @@ private:
   union {
     uint32_t server_cap_{0};
     struct {
-      uint16_t ext_server_cap_;
       uint16_t base_server_cap_;
+      uint16_t ext_server_cap_;
     };
   };
   uint8_t server_charset_{0};

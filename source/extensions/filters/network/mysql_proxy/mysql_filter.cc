@@ -7,10 +7,10 @@
 #include "common/common/assert.h"
 #include "common/common/logger.h"
 
+#include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
 #include "extensions/filters/network/well_known_names.h"
-#include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -167,8 +167,6 @@ void MySQLFilter::onClientLoginResponse(ClientLoginResponse& client_login_resp) 
   }
 }
 void MySQLFilter::onClientSwitchResponse(ClientSwitchResponse& client_switch_resp) {
-  // we have authed downstream at @onClientLogin, so there is not need to auth by another auth
-  // method
   ASSERT(authed_);
   // only support oldPasswordAuthSwitch
   client_switch_resp.setAuthPluginResp(authResp(OldPassword));
@@ -180,7 +178,7 @@ void MySQLFilter::onMoreClientLoginResponse(ClientLoginResponse& client_login_re
     config_->stats_.login_failures_.inc();
     onAuthFailure("upstream server auth fail");
   }
-  // authed_ must be true, or the state machine of decoder is broken
+  // @authed_ must be true, or the state machine of decoder is broken
   ASSERT(authed_);
   writeDownstream(client_login_resp);
 }
@@ -235,7 +233,6 @@ void MySQLFilter::onServerGreeting(ServerGreeting& sg) {
   upstream_auth_method_ = AuthHelper::authMethod(sg.getServerCap(), sg.getExtServerCap());
   sg.encode(buffer);
   writeDownstream(buffer);
-  
 }
 
 } // namespace MySQLProxy
