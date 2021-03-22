@@ -84,7 +84,8 @@ class MySQLFilter : public Network::ReadFilter,
                     public Logger::Loggable<Logger::Id::filter> {
 public:
   MySQLFilter(MySQLFilterConfigSharedPtr config, RouterSharedPtr router,
-              ClientFactory& client_factory, DecoderFactory& decoder_factory);
+              ClientFactory& client_factory, DecoderFactory& decoder_factory,
+              FaultManagerSharedPtr fault_manager);
   ~MySQLFilter() override = default;
 
   // Network::ReadFilter
@@ -124,6 +125,8 @@ public:
 private:
   void onFailure(const ClientLoginResponse& err, uint8_t seq);
   void onAuthOk();
+  void tryInjectFault(const Fault* fault);
+  void delayInjectionTimerCallback();
 
 private:
   Network::ReadFilterCallbacks* read_callbacks_{};
@@ -138,6 +141,8 @@ private:
   ClientPtr client_;
   std::vector<uint8_t> seed_;
   bool authed_{false};
+  FaultManagerSharedPtr fault_manager_;
+  Event::TimerPtr delay_timer_;
 };
 
 } // namespace MySQLProxy

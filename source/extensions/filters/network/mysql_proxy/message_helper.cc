@@ -114,6 +114,10 @@ ErrMessage MessageHelper::dbError(const std::string& db) {
                    fmt::format("Unknown database {}", db));
 }
 
+ErrMessage MessageHelper::injectError() {
+  return encodeErr(30001, MYSQL_SQL_STATE_MARKER, "45000", "Envoy Inject Error");
+}
+
 ClientSwitchResponse MessageHelper::encodeSwithResponse(const std::vector<uint8_t>& auth_resp) {
   ClientSwitchResponse resp;
   resp.setAuthPluginResp(auth_resp);

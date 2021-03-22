@@ -13,6 +13,7 @@
 #include "common/config/datasource.h"
 
 #include "extensions/filters/network/mysql_proxy/conn_pool.h"
+#include "extensions/filters/network/mysql_proxy/fault.h"
 #include "extensions/filters/network/mysql_proxy/message_helper.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
@@ -34,9 +35,11 @@ MySQLFilterConfig::MySQLFilterConfig(
       password_(Config::DataSource::read(config.downstream_auth_password(), true, api)) {}
 
 MySQLFilter::MySQLFilter(MySQLFilterConfigSharedPtr config, RouterSharedPtr router,
-                         ClientFactory& client_factory, DecoderFactory& decoder_factory)
+                         ClientFactory& client_factory, DecoderFactory& decoder_factory,
+                         FaultManagerSharedPtr fault_manager)
     : config_(std::move(config)), decoder_(decoder_factory.create(*this)), router_(router),
-      client_factory_(client_factory), decoder_factory_(decoder_factory), client_(nullptr) {}
+      client_factory_(client_factory), decoder_factory_(decoder_factory), client_(nullptr),
+      fault_manager_(fault_manager) {}
 
 void MySQLFilter::initializeReadFilterCallbacks(Network::ReadFilterCallbacks& callbacks) {
   read_callbacks_ = &callbacks;
@@ -46,6 +49,10 @@ void MySQLFilter::initializeReadFilterCallbacks(Network::ReadFilterCallbacks& ca
 void MySQLFilter::onEvent(Network::ConnectionEvent event) {
   if (event == Network::ConnectionEvent::RemoteClose ||
       event == Network::ConnectionEvent::LocalClose) {
+    if (delay_timer_) {
+      delay_timer_->disableTimer();
+      delay_timer_.reset();
+    }
     if (canceler_) {
       canceler_->cancel();
       canceler_ = nullptr;
@@ -59,7 +66,7 @@ void MySQLFilter::onEvent(Network::ConnectionEvent event) {
 Network::FilterStatus MySQLFilter::onData(Buffer::Instance& data, bool) {
   ENVOY_LOG(trace, "downstream data sent, len {}", data.length());
   read_buffer_.move(data);
-  if (client_ == nullptr && authed_) {
+  if ((client_ == nullptr && authed_) || delay_timer_) {
     return Network::FilterStatus::StopIteration;
   }
   doDecode(read_buffer_);
@@ -122,6 +129,10 @@ void MySQLFilter::onClientFailure(ConnectionPool::MySQLPoolFailureReason reason)
 
 void MySQLFilter::onResponse(MySQLCodec& codec, uint8_t seq) {
   auto buffer = MessageHelper::encodePacket(codec, seq);
+  if (delay_timer_) {
+    write_buffer_.move(buffer);
+    return;
+  }
   read_callbacks_->connection().write(buffer, false);
 }
 
@@ -222,6 +233,7 @@ void MySQLFilter::onMoreClientLoginResponse(ClientLoginResponse&) {
 
 void MySQLFilter::onCommand(Command& command) {
   ASSERT(client_ != nullptr);
+  const Fault* fault;
   if (command.isQuery()) {
     envoy::config::core::v3::Metadata& dynamic_metadata =
         read_callbacks_->connection().streamInfo().dynamicMetadata();
@@ -240,7 +252,14 @@ void MySQLFilter::onCommand(Command& command) {
       read_callbacks_->connection().streamInfo().setDynamicMetadata(
           NetworkFilterNames::get().MySQLProxy, metadata);
     }
+    for (const auto& kv : metadata.fields()) {
+      fault = fault_manager_->getFaultForCommand(kv.second.string_value());
+      break;
+    }
+  } else {
+    fault = fault_manager_->getFaultForCommand("ALL_KEY");
   }
+  tryInjectFault(fault);
   if (command.getCmd() == Command::Cmd::Quit) {
     read_callbacks_->connection().close(Network::ConnectionCloseType::NoFlush);
     return;
@@ -250,6 +269,36 @@ void MySQLFilter::onCommand(Command& command) {
   decoder_->getSession().setState(MySQLSession::State::Req);
   auto buffer = MessageHelper::encodePacket(command, MYSQL_REQUEST_PKT_NUM);
   client_->makeRequest(buffer);
+}
+
+void MySQLFilter::delayInjectionTimerCallback() {
+  delay_timer_.reset();
+  // write the reponse
+  if (write_buffer_.length() > 0) {
+    read_callbacks_->connection().write(write_buffer_, false);
+  }
+  // Continue request processing.
+  read_callbacks_->continueReading();
+}
+
+void MySQLFilter::tryInjectFault(const Fault* fault) {
+  const bool has_delay_fault = fault != nullptr && fault->delayMs() > std::chrono::milliseconds(0);
+  // Do not try to inject delays if there is an active delay.
+  // Make sure to capture stats for the request otherwise.
+  if (has_delay_fault && delay_timer_) {
+    return;
+  }
+  if (has_delay_fault) {
+    ENVOY_LOG(debug, "mysql filter: inject a delay to downstream");
+    delay_timer_ = read_callbacks_->connection().dispatcher().createTimer(
+        [this]() -> void { delayInjectionTimerCallback(); });
+    delay_timer_->enableTimer(fault->delayMs());
+  }
+  const bool has_error_fault = fault != nullptr && fault->faultType() == FaultType::Error;
+  if (has_error_fault) {
+    ENVOY_LOG(debug, "mysql filter: inject a error to downstream");
+    onFailure(MessageHelper::injectError(), MYSQL_RESPONSE_PKT_NUM);
+  }
 }
 
 Network::FilterStatus MySQLFilter::onNewConnection() {
