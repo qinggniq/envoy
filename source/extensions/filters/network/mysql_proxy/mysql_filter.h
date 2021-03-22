@@ -13,6 +13,7 @@
 #include "common/common/logger.h"
 
 #include "extensions/filters/network/mysql_proxy/conn_pool.h"
+#include "extensions/filters/network/mysql_proxy/fault.h"
 #include "extensions/filters/network/mysql_proxy/mysql_client.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin.h"
@@ -23,7 +24,6 @@
 #include "extensions/filters/network/mysql_proxy/mysql_decoder.h"
 #include "extensions/filters/network/mysql_proxy/mysql_session.h"
 #include "extensions/filters/network/mysql_proxy/route.h"
-#include "extensions/filters/network/mysql_proxy/fault.h"
 
 namespace Envoy {
 namespace Extensions {

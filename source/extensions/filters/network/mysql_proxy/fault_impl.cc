@@ -1,4 +1,5 @@
 #include "extensions/filters/network/mysql_proxy/fault_impl.h"
+
 #include "envoy/extensions/filters/network/mysql_proxy/v3/mysql_proxy.pb.h"
 
 namespace Envoy {

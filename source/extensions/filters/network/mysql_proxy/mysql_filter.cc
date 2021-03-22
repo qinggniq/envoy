@@ -273,7 +273,7 @@ void MySQLFilter::onCommand(Command& command) {
 
 void MySQLFilter::delayInjectionTimerCallback() {
   delay_timer_.reset();
-  // write the reponse
+  // write the response
   if (write_buffer_.length() > 0) {
     read_callbacks_->connection().write(write_buffer_, false);
   }
