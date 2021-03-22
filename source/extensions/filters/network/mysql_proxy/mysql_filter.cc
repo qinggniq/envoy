@@ -233,7 +233,6 @@ void MySQLFilter::onCommand(Command& command) {
 
     ENVOY_CONN_LOG(trace, "mysql_proxy: query processed {}", read_callbacks_->connection(),
                    command.getData());
-
     if (!result) {
       config_->stats_.queries_parse_error_.inc();
     } else {

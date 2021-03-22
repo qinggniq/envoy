@@ -25,6 +25,7 @@ envoy_cc_library(
         ":codec_lib",
         ":conn_pool_lib",
         ":decoder_lib",
+        ":fault_lib",
         ":message_helper_lib",
         ":route_lib",
         "//include/envoy/network:filter_interface",
@@ -34,6 +35,27 @@ envoy_cc_library(
         "//source/common/network:filter_lib",
         "//source/extensions/filters/network:well_known_names",
         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
+        "@envoy_api//envoy/extensions/filters/network/mysql_proxy/v3:pkg_cc_proto",
+    ],
+)
+
+envoy_cc_library(
+    name = "fault_interface",
+    hdrs = ["fault.h"],
+    deps = [
+        "@envoy_api//envoy/type/v3:pkg_cc_proto",
+    ],
+)
+
+envoy_cc_library(
+    name = "fault_lib",
+    srcs = ["fault_impl.cc"],
+    hdrs = ["fault_impl.h"],
+    deps = [
+        ":fault_interface",
+        "//include/envoy/common:random_generator_interface",
+        "//include/envoy/upstream:upstream_interface",
+        "//source/common/protobuf:utility_lib",
         "@envoy_api//envoy/extensions/filters/network/mysql_proxy/v3:pkg_cc_proto",
     ],
 )

@@ -23,6 +23,7 @@
 #include "extensions/filters/network/mysql_proxy/mysql_decoder.h"
 #include "extensions/filters/network/mysql_proxy/mysql_session.h"
 #include "extensions/filters/network/mysql_proxy/route.h"
+#include "extensions/filters/network/mysql_proxy/fault.h"
 
 namespace Envoy {
 namespace Extensions {
