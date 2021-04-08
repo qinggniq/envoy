@@ -261,7 +261,7 @@ void MySQLFilter::DownstreamDecoder::onCommand(Command& command) {
 
 void MySQLFilter::UpstreamDecoder::onCommandResponse(CommandResponse& resp) {
   send(resp);
-  // server response might contiain more than one packets, so seq id expect to be seq + 1
+  // server response might contain more than one packets, so seq id expect to be seq + 1
   parent_.stepServerSession(resp.getSeq() + 1, MySQLSession::State::ReqResp);
 }
 
