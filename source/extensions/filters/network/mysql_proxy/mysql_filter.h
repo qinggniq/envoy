@@ -103,7 +103,7 @@ public:
     void onMoreClientLoginResponse(ClientLoginResponse&) override{};
     void onCommand(Command& message) override;
     void onCommandResponse(CommandResponse&) override {}
-
+    // ConnectionCallback
     void onEvent(Network::ConnectionEvent event) override;
     void onAboveWriteBufferHighWatermark() override {}
     void onBelowWriteBufferLowWatermark() override {}

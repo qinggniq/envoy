@@ -40,16 +40,18 @@ public:
   MockRouter(RouteSharedPtr route);
   ~MockRouter() override = default;
   MOCK_METHOD(RouteSharedPtr, upstreamPool, (const std::string&));
+  MOCK_METHOD(RouteSharedPtr, primaryPool, ());
   RouteSharedPtr route;
 };
 
 class MockRoute : public Route {
 public:
-  MockRoute(Upstream::ThreadLocalCluster* instance);
+  MockRoute(Upstream::ThreadLocalCluster* instance, const std::string& name);
   ~MockRoute() override = default;
   MOCK_METHOD((Upstream::ThreadLocalCluster*), upstream, ());
-
+  MOCK_METHOD((const std::string&), name, ());
   Upstream::ThreadLocalCluster* pool;
+  const std::string& cluster_name;
 };
 
 } // namespace MySQLProxy
