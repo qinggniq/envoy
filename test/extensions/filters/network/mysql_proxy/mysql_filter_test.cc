@@ -54,7 +54,8 @@ TEST_F(MySQLFilterTest, MySqlFallbackToTcpProxy) {
   EXPECT_EQ(1UL, config_->stats().sessions_.value());
 
   Buffer::InstancePtr greet_data(new Buffer::OwnedImpl(" "));
-  EXPECT_EQ(Envoy::Network::FilterStatus::Continue, filter_->onData(*greet_data, false));
+
+  filter_->upstream_decoder_->onUpstreamData(*greet_data, false);
   EXPECT_EQ(1UL, config_->stats().decoder_errors_.value());
 
   Buffer::InstancePtr more_data(new Buffer::OwnedImpl("scooby doo - part 2!"));

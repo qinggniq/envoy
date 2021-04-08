@@ -52,64 +52,6 @@ public:
   static DecodeStatus peekHdr(Buffer::Instance& buffer, uint32_t& len, uint8_t& seq);
 };
 
-class AuthHelperTest;
-/**
- * MySQL auth method.
- */
-enum class AuthMethod : uint8_t {
-  Unknown,
-  OldPassword,
-  NativePassword,
-  Sha256Password,
-  CacheSha2Password,
-  ClearPassword
-};
-
-/**
- * Auth helpers for auth MySQL client and server.
- * Now MySQL Proxy only support OldPassword and NativePassword auth method.
- */
-class AuthHelper : public Logger::Loggable<Logger::Id::filter> {
-public:
-  static AuthMethod authMethod(uint32_t cap, const std::string& auth_plugin_name);
-  static std::vector<uint8_t> generateSeed();
-  static std::vector<uint8_t> oldPasswordSignature(const std::string& password,
-                                                   const std::vector<uint8_t>& seed);
-
-  static std::vector<uint8_t> nativePasswordSignature(const std::string& password,
-                                                      const std::vector<uint8_t>& seed);
-  static std::vector<uint32_t> oldHash(const std::string& text) {
-    return oldHash(text.data(), text.size());
-  }
-  static std::vector<uint32_t> oldHash(const std::vector<uint8_t>& text) {
-    return oldHash(reinterpret_cast<const char*>(text.data()), text.size());
-  }
-  /*
-   * Generate binary hash from raw text string
-   * Used for Pre-4.1 password handling
-   */
-  static std::vector<uint32_t> oldHash(const char* text, int size);
-  static std::vector<uint8_t> nativeHash(const std::string& text) {
-    return nativeHash(text.data(), text.size());
-  }
-  static std::vector<uint8_t> nativeHash(const std::vector<uint8_t>& text) {
-    return nativeHash(reinterpret_cast<const char*>(text.data()), text.size());
-  }
-  static std::vector<uint8_t> nativeHash(const char* data, int len);
-
-private:
-  struct RandStruct {
-    RandStruct(uint32_t seed1, uint32_t seed2);
-    double myRnd();
-    uint32_t seed1_, seed2_, max_value_;
-    double max_value_dbl_;
-  };
-
-private:
-  static constexpr int SCRAMBLE_LENGTH_323 = 8;
-  static constexpr int SEED_LENGTH = 20;
-};
-
 } // namespace MySQLProxy
 } // namespace NetworkFilters
 } // namespace Extensions

@@ -6,9 +6,6 @@
 
 #include "common/buffer/buffer_impl.h"
 
-#include "extensions/filters/network/mysql_proxy/conn_pool.h"
-#include "extensions/filters/network/mysql_proxy/message_helper.h"
-#include "extensions/filters/network/mysql_proxy/mysql_client.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_command.h"
@@ -40,13 +37,8 @@ parseProtoFromYaml(const std::string& yaml_string) {
   return config;
 }
 
-class MySQLProxyFilterConfigTest : public testing::Test {
+class MySQLFilterTest : public DecoderFactory {
 public:
-  Stats::TestUtil::TestStore store_;
-  NiceMock<Api::MockApi> api_;
-};
-
-TEST_F(MySQLProxyFilterConfigTest, Normal) {
   const std::string yaml_string = R"EOF(
   routes:
   - database: db
@@ -54,84 +46,10 @@ TEST_F(MySQLProxyFilterConfigTest, Normal) {
   stat_prefix: foo
   )EOF";
 
-  auto proto_config = parseProtoFromYaml(yaml_string);
-  MySQLFilterConfig config(store_, proto_config, api_);
-  EXPECT_TRUE(config.username_.empty());
-  EXPECT_TRUE(config.password_.empty());
-}
-
-TEST_F(MySQLProxyFilterConfigTest, Bad) {
-  const std::string yaml_string = R"EOF(
-  downstream_auth_info:
-    authusername:
-      inline_string: "username"
-    authpassword:
-      inline_string: "password"
-  )EOF";
-
-  EXPECT_THROW(parseProtoFromYaml(yaml_string), Envoy::EnvoyException);
-}
-
-TEST_F(MySQLProxyFilterConfigTest, DownstreamAuthPasswordSet) {
-  const std::string yaml_string = R"EOF(
-  stat_prefix: foo
-  downstream_auth_info:
-    auth_password:
-      inline_string: "somepassword"
-  )EOF";
-
-  auto proto_config = parseProtoFromYaml(yaml_string);
-  MySQLFilterConfig config(store_, proto_config, api_);
-  EXPECT_EQ(config.password_, "somepassword");
-  EXPECT_TRUE(config.username_.empty());
-}
-
-TEST_F(MySQLProxyFilterConfigTest, DownstreamAuthSet) {
-  const std::string yaml_string = R"EOF(
-  stat_prefix: foo
-  downstream_auth_info:
-    auth_username:
-      inline_string: "someusername"
-    auth_password:
-      inline_string: "somepassword"
-  )EOF";
-
-  auto proto_config = parseProtoFromYaml(yaml_string);
-  MySQLFilterConfig config(store_, proto_config, api_);
-  EXPECT_EQ(config.password_, "somepassword");
-  EXPECT_EQ(config.username_, "someusername");
-}
-
-class MySQLFilterTest : public ::testing::TestWithParam<ConnPool::MySQLPoolFailureReason>,
-                        public DecoderFactory,
-                        public ClientFactory {
-public:
-  const std::string yaml_string = R"EOF(
-  downstream_auth_info:
-    auth_username:
-      inline_string: "username"
-    auth_password:
-      inline_string: "password"
-  routes:
-  - database: db
-    cluster: cluster
-  stat_prefix: foo
-  )EOF";
-
-  ClientPtr create(Tcp::ConnectionPool::ConnectionDataPtr&&, DecoderFactory&,
-                   ClientCallBack&) override {
-    return std::unique_ptr<MockClient>(client_);
-  }
-
-  DecoderPtr create(DecoderCallbacks& callbacks) override {
-    decoder_callbacks_ = &callbacks;
-    return DecoderPtr{decoder_};
-  }
   MySQLFilterTest() {
     auto proto_config = parseProtoFromYaml(yaml_string);
     MySQLFilterConfigSharedPtr config =
         std::make_shared<MySQLFilterConfig>(store_, proto_config, api_);
-    pool_ = std::make_unique<ConnPool::MockConnectionPoolManager>("");
     route_ = std::make_shared<MockRoute>(pool_.get());
     router_ = std::make_shared<MockRouter>(route_);
     filter_ = std::make_unique<MySQLFilter>(config, router_, *this, *this);
@@ -144,20 +62,16 @@ public:
           BufferHelper::consumeHdr(buffer);
           greet.decode(buffer, 0, buffer.length());
           seed_ = greet.getAuthPluginData();
-          auth_method_ = AuthHelper::authMethod(greet.getServerCap(), greet.getAuthPluginName());
         }));
     EXPECT_EQ(filter_->onNewConnection(), Network::FilterStatus::Continue);
   }
 
-  AuthMethod auth_method_;
   std::vector<uint8_t> seed_;
-  MockClient* client_{new MockClient()};
   MySQLSession session_;
   MockDecoder* decoder_{new MockDecoder(session_)};
   DecoderCallbacks* decoder_callbacks_{};
   std::shared_ptr<MockRoute> route_;
   std::shared_ptr<MockRouter> router_;
-  std::unique_ptr<ConnPool::MockConnectionPoolManager> pool_;
   Stats::TestUtil::TestStore store_;
   MySQLFilterConfigSharedPtr config_;
   std::unique_ptr<MySQLFilter> filter_;
@@ -454,202 +368,6 @@ TEST_F(MySQLFilterTest, PassAuthWriteQueryAndUpstreamClientIsReady) {
   std::string response = "command response";
   auto cmd_resp = MessageHelper::encodeCommandResponse(response);
   filter_->onResponse(cmd_resp, 1);
-}
-
-INSTANTIATE_TEST_CASE_P(FailureTest, MySQLFilterTest,
-                        ::testing::Values(ConnPool::MySQLPoolFailureReason::LocalConnectionFailure,
-                                          ConnPool::MySQLPoolFailureReason::RemoteConnectionFailure,
-                                          ConnPool::MySQLPoolFailureReason::Timeout,
-                                          ConnPool::MySQLPoolFailureReason::Overflow,
-                                          ConnPool::MySQLPoolFailureReason::AuthFailure,
-                                          ConnPool::MySQLPoolFailureReason::ParseFailure,
-                                          static_cast<ConnPool::MySQLPoolFailureReason>(-1)));
-
-TEST_P(MySQLFilterTest, PassAuthWriteQueryButPoolFailure) {
-  std::string username = "username";
-  std::string db = "db";
-  std::string password = "password";
-  auto client_login =
-      MessageHelper::encodeClientLogin(AuthMethod::NativePassword, username, password, db, seed_);
-  EXPECT_EQ(client_login.getAuthResp().size(), 20);
-  auto buffer = MessageHelper::encodePacket(client_login, 1);
-
-  EXPECT_CALL(*decoder_, onData).WillOnce(Invoke([&](Buffer::Instance& data) {
-    ClientLogin login{};
-    etractBufferData(login, data, 1, data.length() - 4);
-    decoder_callbacks_->onClientLogin(login);
-  }));
-
-  EXPECT_CALL(*decoder_, getSession()).Times(2);
-  EXPECT_CALL(*router_, upstreamPool(db));
-  EXPECT_CALL(*route_, upstream());
-
-  EXPECT_CALL(*pool_, newConnection(_))
-      .WillOnce(
-          Invoke([&](ConnPool::ClientPoolCallBack& callbacks) -> Tcp::ConnectionPool::Cancellable* {
-            callbacks.onPoolFailure(GetParam(), nullptr);
-            return nullptr;
-          }));
-
-  EXPECT_CALL(filter_callbacks_.connection_, write(_, false))
-      .WillOnce(Invoke([&](Buffer::Instance& data, bool) {
-        OkMessage ok{};
-        etractBufferData(ok, data, 2, data.length() - 4);
-      }));
-
-  EXPECT_CALL(filter_callbacks_.connection_, close(Network::ConnectionCloseType::NoFlush));
-  EXPECT_EQ(filter_->onData(buffer, false), Network::FilterStatus::Continue);
-
-  std::string query = "select * from test";
-  auto cmd = MessageHelper::encodeCommand(Command::Cmd::Query, query, "", true);
-  buffer = MessageHelper::encodePacket(cmd, 0);
-
-  EXPECT_EQ(filter_->onData(buffer, false), Network::FilterStatus::StopIteration);
-}
-
-TEST_F(MySQLFilterTest, PassAuthAndQueryParseError) {
-  std::string username = "username";
-  std::string db = "db";
-  std::string password = "password";
-  auto client_login =
-      MessageHelper::encodeClientLogin(AuthMethod::NativePassword, username, password, db, seed_);
-  EXPECT_EQ(client_login.getAuthResp().size(), 20);
-  auto buffer = MessageHelper::encodePacket(client_login, 1);
-
-  EXPECT_CALL(*decoder_, onData)
-      .WillOnce(Invoke([&](Buffer::Instance& data) {
-        ClientLogin login{};
-        etractBufferData(login, data, 1, data.length() - 4);
-        decoder_callbacks_->onClientLogin(login);
-      }))
-      .WillOnce(Invoke([&](Buffer::Instance& data) {
-        Command command{};
-        etractBufferData(command, data, 0, data.length() - 4);
-        decoder_callbacks_->onCommand(command);
-      }));
-
-  EXPECT_CALL(*router_, upstreamPool(db));
-  EXPECT_CALL(*route_, upstream());
-
-  EXPECT_CALL(filter_callbacks_, continueReading());
-  EXPECT_CALL(*decoder_, getSession()).Times(4);
-
-  auto* client_data = new Tcp::ConnectionPool::MockConnectionData();
-
-  EXPECT_CALL(*client_, makeRequest(_));
-  EXPECT_CALL(*pool_, newConnection(_))
-      .WillOnce(
-          Invoke([&](ConnPool::ClientPoolCallBack& callbacks) -> Tcp::ConnectionPool::Cancellable* {
-            callbacks.onPoolReady(
-                std::unique_ptr<Tcp::ConnectionPool::MockConnectionData>(client_data), nullptr);
-            return nullptr;
-          }));
-
-  EXPECT_CALL(filter_callbacks_.connection_, write(_, false))
-      .WillOnce(Invoke([&](Buffer::Instance& data, bool) {
-        OkMessage ok{};
-        etractBufferData(ok, data, 2, data.length() - 4);
-      }));
-
-  EXPECT_EQ(filter_->onData(buffer, false), Network::FilterStatus::Continue);
-
-  std::string query = "select * frm test";
-  auto cmd = MessageHelper::encodeCommand(Command::Cmd::Query, query, "", true);
-  buffer = MessageHelper::encodePacket(cmd, 0);
-
-  EXPECT_EQ(filter_->onData(buffer, false), Network::FilterStatus::Continue);
-}
-
-TEST_F(MySQLFilterTest, PassAuthAndQuitCommand) {
-  std::string username = "username";
-  std::string db = "db";
-  std::string password = "password";
-  auto client_login =
-      MessageHelper::encodeClientLogin(AuthMethod::NativePassword, username, password, db, seed_);
-  EXPECT_EQ(client_login.getAuthResp().size(), 20);
-  auto buffer = MessageHelper::encodePacket(client_login, 1);
-
-  EXPECT_CALL(*decoder_, onData)
-      .WillOnce(Invoke([&](Buffer::Instance& data) {
-        ClientLogin login{};
-        etractBufferData(login, data, 1, data.length() - 4);
-        decoder_callbacks_->onClientLogin(login);
-      }))
-      .WillOnce(Invoke([&](Buffer::Instance& data) {
-        Command command{};
-        etractBufferData(command, data, 0, data.length() - 4);
-        decoder_callbacks_->onCommand(command);
-      }));
-
-  EXPECT_CALL(*router_, upstreamPool(db));
-  EXPECT_CALL(*route_, upstream());
-
-  EXPECT_CALL(filter_callbacks_, continueReading());
-  EXPECT_CALL(*decoder_, getSession()).Times(2);
-  auto* client_data = new Tcp::ConnectionPool::MockConnectionData();
-
-  EXPECT_CALL(*pool_, newConnection(_))
-      .WillOnce(
-          Invoke([&](ConnPool::ClientPoolCallBack& callbacks) -> Tcp::ConnectionPool::Cancellable* {
-            callbacks.onPoolReady(
-                std::unique_ptr<Tcp::ConnectionPool::MockConnectionData>(client_data), nullptr);
-            return nullptr;
-          }));
-
-  EXPECT_CALL(filter_callbacks_.connection_, write(_, false))
-      .WillOnce(Invoke([&](Buffer::Instance& data, bool) {
-        OkMessage ok{};
-        etractBufferData(ok, data, 2, data.length() - 4);
-      }));
-  EXPECT_CALL(filter_callbacks_.connection_, close(Network::ConnectionCloseType::NoFlush))
-      .WillOnce(Invoke([&](Network::ConnectionCloseType) {
-        filter_->onEvent(Network::ConnectionEvent::RemoteClose);
-      }));
-  EXPECT_CALL(*client_, close);
-  EXPECT_EQ(filter_->onData(buffer, false), Network::FilterStatus::Continue);
-
-  auto cmd = MessageHelper::encodeCommand(Command::Cmd::Quit, "", "", false);
-  buffer = MessageHelper::encodePacket(cmd, 0);
-
-  EXPECT_EQ(filter_->onData(buffer, false), Network::FilterStatus::Continue);
-}
-
-TEST_F(MySQLFilterTest, PassAuthClientNotReadyAndLocalClosed) {
-  std::string username = "username";
-  std::string db = "db";
-  std::string password = "password";
-  auto client_login =
-      MessageHelper::encodeClientLogin(AuthMethod::NativePassword, username, password, db, seed_);
-  EXPECT_EQ(client_login.getAuthResp().size(), 20);
-  auto buffer = MessageHelper::encodePacket(client_login, 1);
-
-  EXPECT_CALL(*decoder_, onData).WillOnce(Invoke([&](Buffer::Instance& data) {
-    ClientLogin login{};
-    etractBufferData(login, data, 1, data.length() - 4);
-    decoder_callbacks_->onClientLogin(login);
-  }));
-
-  EXPECT_CALL(*router_, upstreamPool(db));
-  EXPECT_CALL(*route_, upstream());
-
-  EXPECT_CALL(*decoder_, getSession()).Times(2);
-  auto canceller = std::make_unique<Envoy::ConnectionPool::MockCancellable>();
-
-  EXPECT_CALL(*canceller, cancel(ConnectionPool::CancelPolicy::Default));
-  EXPECT_CALL(*pool_, newConnection(_))
-      .WillOnce(Invoke([&](ConnPool::ClientPoolCallBack&) -> Tcp::ConnectionPool::Cancellable* {
-        return canceller.get();
-      }));
-
-  EXPECT_CALL(filter_callbacks_.connection_, write(_, false))
-      .WillOnce(Invoke([&](Buffer::Instance& data, bool) {
-        OkMessage ok{};
-        etractBufferData(ok, data, 2, data.length() - 4);
-      }));
-
-  EXPECT_EQ(filter_->onData(buffer, false), Network::FilterStatus::Continue);
-
-  filter_->onEvent(Network::ConnectionEvent::LocalClose);
 }
 
 } // namespace MySQLProxy

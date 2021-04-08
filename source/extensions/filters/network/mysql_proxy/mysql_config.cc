@@ -11,13 +11,10 @@
 #include "common/common/logger.h"
 #include "common/config/datasource.h"
 
-#include "extensions/filters/network/mysql_proxy/conn_pool.h"
-#include "extensions/filters/network/mysql_proxy/conn_pool_impl.h"
-#include "extensions/filters/network/mysql_proxy/mysql_client.h"
-#include "extensions/filters/network/mysql_proxy/mysql_client_impl.h"
 #include "extensions/filters/network/mysql_proxy/mysql_decoder.h"
 #include "extensions/filters/network/mysql_proxy/mysql_decoder_impl.h"
 #include "extensions/filters/network/mysql_proxy/mysql_filter.h"
+#include "extensions/filters/network/mysql_proxy/route.h"
 #include "extensions/filters/network/mysql_proxy/route_impl.h"
 
 namespace Envoy {
@@ -35,23 +32,22 @@ NetworkFilters::MySQLProxy::MySQLConfigFactory::createFilterFactoryFromProtoType
   ASSERT(!proto_config.stat_prefix().empty());
 
   absl::flat_hash_map<std::string, RouteSharedPtr> routes;
+  RouteSharedPtr primary_cluster_route = nullptr;
   for (const auto& route : proto_config.routes()) {
-    auto cluster = context.clusterManager().getThreadLocalCluster(route.cluster());
-    if (cluster == nullptr) {
-      continue;
+    if (primary_cluster_route == nullptr) {
+      primary_cluster_route =
+          RouteFactoryImpl::instance.create(&context.clusterManager(), route.cluster());
     }
-    routes.emplace(route.database(), RouteFactoryImpl::instance.create(
-                                         &context.clusterManager(), context.threadLocal(),
-                                         context.api(), route, DecoderFactoryImpl::instance_,
-                                         ConnPool::ConnectionPoolManagerFactoryImpl::instance));
+    routes.emplace(route.database(),
+                   RouteFactoryImpl::instance.create(&context.clusterManager(), route.cluster()));
   }
-  RouterSharedPtr router = std::make_shared<RouterImpl>(std::move(routes));
+  auto router = std::make_shared<RouterImpl>(primary_cluster_route, std::move(routes));
 
   MySQLFilterConfigSharedPtr filter_config(
-      std::make_shared<MySQLFilterConfig>(context.scope(), proto_config, context.api()));
+      std::make_shared<MySQLFilterConfig>(context.scope(), proto_config));
   return [filter_config, router](Network::FilterManager& filter_manager) -> void {
-    filter_manager.addReadFilter(std::make_shared<MySQLFilter>(
-        filter_config, router, ClientFactoryImpl::instance_, DecoderFactoryImpl::instance_));
+    filter_manager.addReadFilter(
+        std::make_shared<MySQLFilter>(filter_config, router, DecoderFactoryImpl::instance_));
   };
 }
 

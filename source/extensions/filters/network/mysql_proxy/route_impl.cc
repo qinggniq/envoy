@@ -15,10 +15,12 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace MySQLProxy {
 
-RouteImpl::RouteImpl(ConnPool::ConnectionPoolManagerSharedPtr pool) : pool_(pool) {}
+RouteImpl::RouteImpl(Upstream::ClusterManager* cm, const std::string& name)
+    : cluster_name_(name), cm_(cm) {}
 
-RouterImpl::RouterImpl(absl::flat_hash_map<std::string, RouteSharedPtr>&& router)
-    : routes_(std::move(router)) {}
+RouterImpl::RouterImpl(RouteSharedPtr primary_cluster_route,
+                       absl::flat_hash_map<std::string, RouteSharedPtr>&& router)
+    : primary_cluster_route_(primary_cluster_route), routes_(std::move(router)) {}
 
 RouteSharedPtr RouterImpl::upstreamPool(const std::string& db) {
   if (routes_.find(db) != routes_.end()) {
@@ -27,13 +29,13 @@ RouteSharedPtr RouterImpl::upstreamPool(const std::string& db) {
   return nullptr;
 }
 
+RouteSharedPtr RouterImpl::primaryPool() { return primary_cluster_route_; }
+
 RouteFactoryImpl RouteFactoryImpl::instance;
 
-RouteSharedPtr RouteFactoryImpl::create(
-    Upstream::ClusterManager* cm, ThreadLocal::SlotAllocator& tls, Api::Api& api,
-    const envoy::extensions::filters::network::mysql_proxy::v3::MySQLProxy::Route& route,
-    DecoderFactory& decoder_factory, ConnPool::ConnectionPoolManagerFactory& factory) {
-  return std::make_shared<RouteImpl>(factory.create(cm, tls, api, route, decoder_factory));
+RouteSharedPtr RouteFactoryImpl::create(Upstream::ClusterManager* cm,
+                                        const std::string& cluster_name) {
+  return std::make_shared<RouteImpl>(cm, cluster_name);
 }
 
 } // namespace MySQLProxy

@@ -3,9 +3,10 @@
 #include <memory>
 
 #include "envoy/buffer/buffer.h"
+#include "envoy/extensions/filters/network/mysql_proxy/v3/mysql_proxy.pb.h"
+#include "envoy/tcp/conn_pool.h"
 #include "envoy/upstream/cluster_manager.h"
-
-#include "extensions/filters/network/mysql_proxy/conn_pool.h"
+#include "envoy/upstream/thread_local_cluster.h"
 
 namespace Envoy {
 namespace Extensions {
@@ -22,7 +23,8 @@ public:
    * Return the connection pool manager of this cluster.
    * @return connection pool manager
    */
-  virtual ConnPool::ConnectionPoolManager& upstream() PURE;
+  virtual Upstream::ThreadLocalCluster* upstream() PURE;
+  virtual const std::string& name() PURE;
 };
 
 using RouteSharedPtr = std::shared_ptr<Route>;
@@ -35,6 +37,11 @@ public:
    * @return a handle to the connection pool.
    */
   virtual RouteSharedPtr upstreamPool(const std::string& db) PURE;
+  /**
+   * Returns a connection pool of primary cluster.
+   * @return a handle to the connection pool.
+   */
+  virtual RouteSharedPtr primaryPool() PURE;
 };
 
 using RouterSharedPtr = std::shared_ptr<Router>;
@@ -42,10 +49,7 @@ using RouterSharedPtr = std::shared_ptr<Router>;
 class RouteFactory {
 public:
   virtual ~RouteFactory() = default;
-  virtual RouteSharedPtr
-  create(Upstream::ClusterManager* cm, ThreadLocal::SlotAllocator& tls, Api::Api& api,
-         const envoy::extensions::filters::network::mysql_proxy::v3::MySQLProxy::Route& route,
-         DecoderFactory& decoder_factory, ConnPool::ConnectionPoolManagerFactory& factory) PURE;
+  virtual RouteSharedPtr create(Upstream::ClusterManager* cm, const std::string& cluster_name) PURE;
 };
 
 } // namespace MySQLProxy

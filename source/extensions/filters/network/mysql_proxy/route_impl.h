@@ -2,6 +2,7 @@
 #pragma once
 #include "envoy/api/api.h"
 #include "envoy/extensions/filters/network/mysql_proxy/v3/mysql_proxy.pb.h"
+#include "envoy/router/router.h"
 #include "envoy/tcp/conn_pool.h"
 #include "envoy/upstream/cluster_manager.h"
 #include "envoy/upstream/upstream.h"
@@ -15,28 +16,32 @@ namespace MySQLProxy {
 
 class RouteImpl : public Route {
 public:
-  RouteImpl(ConnPool::ConnectionPoolManagerSharedPtr pool);
-  ConnPool::ConnectionPoolManager& upstream() override { return *pool_; }
+  RouteImpl(Upstream::ClusterManager* cm, const std::string& cluster_name);
+  Upstream::ThreadLocalCluster* upstream() override {
+    return cm_->getThreadLocalCluster(cluster_name_);
+  }
+  const std::string& name() override { return cluster_name_; }
 
 private:
-  ConnPool::ConnectionPoolManagerSharedPtr pool_;
+  const std::string cluster_name_;
+  Upstream::ClusterManager* cm_;
 };
 
 class RouterImpl : public Router {
 public:
-  RouterImpl(absl::flat_hash_map<std::string, RouteSharedPtr>&& router);
+  RouterImpl(RouteSharedPtr primary_cluster_route,
+             absl::flat_hash_map<std::string, RouteSharedPtr>&& router);
   RouteSharedPtr upstreamPool(const std::string& db) override;
+  RouteSharedPtr primaryPool() override;
 
 private:
+  RouteSharedPtr primary_cluster_route_;
   absl::flat_hash_map<std::string, RouteSharedPtr> routes_;
 };
 
 class RouteFactoryImpl : public RouteFactory {
 public:
-  RouteSharedPtr
-  create(Upstream::ClusterManager* cm, ThreadLocal::SlotAllocator& tls, Api::Api& api,
-         const envoy::extensions::filters::network::mysql_proxy::v3::MySQLProxy::Route& route,
-         DecoderFactory& decoder_factory, ConnPool::ConnectionPoolManagerFactory& factory) override;
+  RouteSharedPtr create(Upstream::ClusterManager* cm, const std::string& cluster_name) override;
   static RouteFactoryImpl instance;
 };
 

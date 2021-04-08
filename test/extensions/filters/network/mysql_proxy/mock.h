@@ -1,5 +1,6 @@
-#include "extensions/filters/network/mysql_proxy/conn_pool.h"
-#include "extensions/filters/network/mysql_proxy/mysql_client.h"
+#include "envoy/upstream/thread_local_cluster.h"
+#include "envoy/upstream/upstream.h"
+
 #include "extensions/filters/network/mysql_proxy/mysql_decoder.h"
 #include "extensions/filters/network/mysql_proxy/mysql_session.h"
 #include "extensions/filters/network/mysql_proxy/route.h"
@@ -10,14 +11,6 @@ namespace Envoy {
 namespace Extensions {
 namespace NetworkFilters {
 namespace MySQLProxy {
-
-class MockClient : public Client {
-public:
-  MockClient() = default;
-  ~MockClient() override = default;
-  MOCK_METHOD(void, makeRequest, (Buffer::Instance&));
-  MOCK_METHOD(void, close, ());
-};
 
 class MockDecoder : public Decoder {
 public:
@@ -52,32 +45,13 @@ public:
 
 class MockRoute : public Route {
 public:
-  MockRoute(ConnPool::ConnectionPoolManager* instance);
+  MockRoute(Upstream::ThreadLocalCluster* instance);
   ~MockRoute() override = default;
-  MOCK_METHOD((ConnPool::ConnectionPoolManager&), upstream, ());
-  MOCK_METHOD(void, test, (std::string &&));
+  MOCK_METHOD((Upstream::ThreadLocalCluster*), upstream, ());
 
-  ConnPool::ConnectionPoolManager* pool;
+  Upstream::ThreadLocalCluster* pool;
 };
 
-class MockClientCallbacks : public ClientCallBack {
-public:
-  ~MockClientCallbacks() override = default;
-  MOCK_METHOD(void, onResponse, (MySQLCodec&, uint8_t));
-  MOCK_METHOD(void, onFailure, ());
-};
-
-namespace ConnPool {
-
-class MockConnectionPoolManager : public ConnectionPoolManager {
-public:
-  ~MockConnectionPoolManager() override = default;
-  MockConnectionPoolManager(const std::string& cluster_name) : cluster_name(cluster_name) {}
-  MOCK_METHOD((Tcp::ConnectionPool::Cancellable*), newConnection, (ClientPoolCallBack&));
-  std::string cluster_name;
-};
-
-} // namespace ConnPool
 } // namespace MySQLProxy
 } // namespace NetworkFilters
 } // namespace Extensions

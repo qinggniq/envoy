@@ -1,11 +1,9 @@
 #include "mock.h"
 
-#include "extensions/filters/network/mysql_proxy/conn_pool.h"
 #include "extensions/filters/network/mysql_proxy/route.h"
 
 using testing::_;
 using testing::Return;
-using testing::ReturnRef;
 
 namespace Envoy {
 namespace Extensions {
@@ -16,8 +14,8 @@ MockRouter::MockRouter(RouteSharedPtr route) : route(route) {
   ON_CALL(*this, upstreamPool(_)).WillByDefault(Return(route));
 }
 
-MockRoute::MockRoute(ConnPool::ConnectionPoolManager* instance) : pool(instance) {
-  ON_CALL(*this, upstream()).WillByDefault(ReturnRef(*pool));
+MockRoute::MockRoute(Upstream::ThreadLocalCluster* instance) : pool(instance) {
+  ON_CALL(*this, upstream()).WillByDefault(Return(pool));
 }
 
 MockDecoder::MockDecoder(const MySQLSession& session) : session_(session) {

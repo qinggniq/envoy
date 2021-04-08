@@ -21,11 +21,8 @@ envoy_cc_library(
         "mysql_filter.h",
     ],
     deps = [
-        ":client_lib",
         ":codec_lib",
-        ":conn_pool_lib",
         ":decoder_lib",
-        ":message_helper_lib",
         ":route_lib",
         "//include/envoy/network:filter_interface",
         "//include/envoy/server:filter_config_interface",
@@ -35,15 +32,6 @@ envoy_cc_library(
         "//source/extensions/filters/network:well_known_names",
         "@envoy_api//envoy/config/core/v3:pkg_cc_proto",
         "@envoy_api//envoy/extensions/filters/network/mysql_proxy/v3:pkg_cc_proto",
-    ],
-)
-
-envoy_cc_library(
-    name = "message_helper_lib",
-    srcs = ["message_helper.cc"],
-    hdrs = ["message_helper.h"],
-    deps = [
-        ":codec_lib",
     ],
 )
 
@@ -107,8 +95,8 @@ envoy_cc_library(
     name = "route_interface",
     hdrs = ["route.h"],
     deps = [
-        ":conn_pool_interface",
         "//include/envoy/upstream:cluster_manager_interface",
+        "@envoy_api//envoy/extensions/filters/network/mysql_proxy/v3:pkg_cc_proto",
     ],
 )
 
@@ -121,7 +109,6 @@ envoy_cc_library(
         "route_impl.h",
     ],
     deps = [
-        ":conn_pool_lib",
         ":route_interface",
         "//include/envoy/upstream:cluster_manager_interface",
         "@envoy_api//envoy/extensions/filters/network/mysql_proxy/v3:pkg_cc_proto",
@@ -135,62 +122,6 @@ envoy_cc_library(
         "//source/extensions/filters/network:well_known_names",
         "//source/extensions/filters/network/common:factory_base_lib",
         "@envoy_api//envoy/extensions/filters/network/mysql_proxy/v3:pkg_cc_proto",
-    ],
-)
-
-envoy_cc_library(
-    name = "conn_pool_interface",
-    hdrs = [
-        "conn_pool.h",
-    ],
-    deps = [
-        "//include/envoy/upstream:cluster_manager_interface",
-        "@envoy_api//envoy/extensions/filters/network/mysql_proxy/v3:pkg_cc_proto",
-    ],
-)
-
-envoy_cc_library(
-    name = "conn_pool_lib",
-    srcs = [
-        "conn_pool_impl.cc",
-    ],
-    hdrs = [
-        "conn_pool_impl.h",
-    ],
-    deps = [
-        ":client_interface",
-        ":codec_lib",
-        ":config_interface",
-        ":conn_pool_interface",
-        ":decoder_lib",
-        ":message_helper_lib",
-        "//include/envoy/event:deferred_deletable",
-        "//include/envoy/upstream:cluster_manager_interface",
-        "//source/common/common:linked_object",
-        "//source/common/common:minimal_logger_lib",
-        "//source/common/conn_pool:conn_pool_base_lib",
-        "@envoy_api//envoy/extensions/filters/network/mysql_proxy/v3:pkg_cc_proto",
-    ],
-)
-
-envoy_cc_library(
-    name = "client_interface",
-    hdrs = ["mysql_client.h"],
-    deps = [
-        ":decoder_interface",
-        "//include/envoy/upstream:cluster_manager_interface",
-    ],
-)
-
-envoy_cc_library(
-    name = "client_lib",
-    srcs = ["mysql_client_impl.cc"],
-    hdrs = ["mysql_client_impl.h"],
-    deps = [
-        ":client_interface",
-        ":decoder_lib",
-        "//include/envoy/upstream:cluster_manager_interface",
-        "//source/common/network:filter_lib",
     ],
 )
 

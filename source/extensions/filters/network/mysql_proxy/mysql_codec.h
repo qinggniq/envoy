@@ -1,7 +1,5 @@
 #pragma once
 
-#include <bits/stdint-uintn.h>
-
 #include "envoy/common/platform.h"
 
 #include "common/buffer/buffer_impl.h"
@@ -108,11 +106,6 @@ constexpr uint8_t MIN_PROTOCOL_VERSION = 10;
 
 constexpr char MYSQL_STR_END = '\0';
 
-enum DecodeStatus : uint8_t {
-  Success = 0,
-  Failure = 1,
-};
-
 // error code
 constexpr uint16_t MYSQL_CR_AUTH_PLUGIN_ERR = 2061;
 constexpr uint16_t ER_USERNAME = 1468;
@@ -124,6 +117,11 @@ constexpr uint16_t ER_ACCESS_DENIED_ERROR = 1045;
 constexpr uint16_t ER_ER_BAD_DB_ERROR = 1049;
 constexpr uint8_t MYSQL_SQL_STATE_MARKER = '#';
 
+enum DecodeStatus : uint8_t {
+  Success = 0,
+  Failure = 1,
+};
+
 class MySQLCodec : public Logger::Loggable<Logger::Id::filter> {
 public:
   enum class PktType {
@@ -133,16 +131,28 @@ public:
 
   virtual ~MySQLCodec() = default;
 
+  uint8_t getSeq() const { return seq_; }
+  void setSeq(uint8_t seq) { seq_ = seq; }
+
   DecodeStatus decode(Buffer::Instance& data, uint8_t seq, uint32_t len) {
     seq_ = seq;
     return parseMessage(data, len);
   }
 
-  virtual void encode(Buffer::Instance& out) const PURE;
+  Buffer::OwnedImpl encodePacket() const {
+    Buffer::OwnedImpl pkg;
+    Buffer::OwnedImpl buffer;
+    encode(pkg);
+    uint32_t header = (seq_ << 24) | (pkg.length() & MYSQL_HDR_PKT_SIZE_MASK);
+    buffer.writeLEInt<uint32_t>(header);
+    buffer.move(pkg);
+    return buffer;
+  }
 
 protected:
+  friend class MySQLTestUtils;
   virtual DecodeStatus parseMessage(Buffer::Instance& data, uint32_t len) PURE;
-
+  virtual void encode(Buffer::Instance& out) const PURE;
   uint8_t seq_;
 };
 
