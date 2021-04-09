@@ -39,8 +39,8 @@ class MockRouter : public Router {
 public:
   MockRouter(RouteSharedPtr route);
   ~MockRouter() override = default;
-  MOCK_METHOD(RouteSharedPtr, upstreamPool, (const std::string&));
-  MOCK_METHOD(RouteSharedPtr, primaryPool, ());
+  MOCK_METHOD(RouteSharedPtr, upstreamPool, (const std::string&), (override));
+  MOCK_METHOD(RouteSharedPtr, primaryPool, (), (override));
   RouteSharedPtr route;
 };
 

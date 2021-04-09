@@ -41,7 +41,7 @@ parseProtoFromYaml(const std::string& yaml_string) {
   return config;
 }
 
-class MySQLFilterTest : public DecoderFactory {
+class MySQLFilterTest : public DecoderFactory, public testing::Test {
 public:
   const std::string yaml_string = R"EOF(
   routes:
@@ -66,22 +66,101 @@ public:
     auto proto_config = parseProtoFromYaml(yaml_string);
     MySQLFilterConfigSharedPtr config =
         std::make_shared<MySQLFilterConfig>(store_, proto_config, api_);
-    route_ = std::make_shared<MockRoute>(&cm_.thread_local_cluster, cluster_name);
-    // router_ = std::make_shared<MockRouter>(route_);
+    route_ = std::make_shared<MockRoute>(&cm_.thread_local_cluster_, cluster_name);
+    router_ = std::make_shared<MockRouter>(route_);
+    filter_ = std::make_unique<MySQLFilter>(config, router_, *this);
 
-    filter_ = std::make_unique<MySQLFilter>(config, )
+    EXPECT_CALL(read_callbacks_, connection());
+    EXPECT_CALL(read_callbacks_.connection_, addConnectionCallbacks(*filter_->downstream_decoder_));
+    filter_->initializeReadFilterCallbacks(read_callbacks_);
+  }
+
+  void connectionComeNoClusterInRoute() {
+    auto router = std::make_shared<MockRouter>(nullptr);
+    filter_->router_ = router;
+    EXPECT_CALL(*router, primaryPool()).WillOnce(Return(nullptr));
+    EXPECT_CALL(read_callbacks_, connection());
+    EXPECT_CALL(read_callbacks_.connection_, close(Network::ConnectionCloseType::NoFlush));
+
+    EXPECT_EQ(Network::FilterStatus::StopIteration, filter_->onNewConnection());
+    EXPECT_EQ(filter_->config_->stats().sessions_.value(), 1);
+  }
+  void connectionComeNoCluster() {
+    auto route = std::make_shared<MockRoute>(nullptr, cluster_name);
+    auto router = std::make_shared<MockRouter>(route);
+
+    EXPECT_CALL(cm_, getThreadLocalCluster(cluster_name))
+        .WillOnce(
+            Invoke([&](absl::string_view) -> Upstream::ThreadLocalCluster* { return nullptr; }));
+    filter_->router_ = router;
+    EXPECT_CALL(*router, primaryPool()).WillOnce(Return(route));
+    EXPECT_CALL(*route, upstream()).WillOnce(Return(nullptr));
+
+    EXPECT_CALL(read_callbacks_, connection());
+    EXPECT_CALL(read_callbacks_.connection_, close(Network::ConnectionCloseType::NoFlush));
+
+    EXPECT_EQ(Network::FilterStatus::StopIteration, filter_->onNewConnection());
+    EXPECT_EQ(filter_->config_->stats().sessions_.value(), 1);
+  }
+
+  void connectionComeNoHost() {
+    auto route = std::make_shared<MockRoute>(&cm_.thread_local_cluster_, cluster_name);
+    auto router = std::make_shared<MockRouter>(nullptr);
+    filter_->router_ = router;
+    EXPECT_CALL(*router, primaryPool()).WillOnce(Return(route));
+    EXPECT_CALL(*route, upstream()).WillOnce(Return(nullptr));
+
+    EXPECT_CALL(cm_, getThreadLocalCluster(cluster_name));
+
+    EXPECT_CALL(cm_.thread_local_cluster_,
+                tcpConnPool(Upstream::ResourcePriority::Default, nullptr))
+        .WillOnce(Invoke([&](Upstream::ResourcePriority, Upstream::LoadBalancerContext*)
+                             -> Tcp::ConnectionPool::Instance* { return nullptr; }));
+
+    EXPECT_CALL(read_callbacks_, connection());
+    EXPECT_CALL(read_callbacks_.connection_, close(Network::ConnectionCloseType::NoFlush));
+
+    EXPECT_EQ(Network::FilterStatus::StopIteration, filter_->onNewConnection());
+    EXPECT_EQ(filter_->config_->stats().sessions_.value(), 1);
+  }
+
+  void connectionOk() {
+    auto route = std::make_shared<MockRoute>(&cm_.thread_local_cluster_, cluster_name);
+    auto router = std::make_shared<MockRouter>(nullptr);
+    filter_->router_ = router;
+    EXPECT_CALL(*router, primaryPool()).WillOnce(Return(route));
+    EXPECT_CALL(*route, upstream()).WillOnce(Return(nullptr));
+
+    EXPECT_CALL(cm_, getThreadLocalCluster(cluster_name));
+
+    EXPECT_CALL(cm_.thread_local_cluster_,
+                tcpConnPool(Upstream::ResourcePriority::Default, nullptr));
+
+    EXPECT_CALL(cm_.thread_local_cluster_.tcp_conn_pool_, newConnection(_));
+    EXPECT_EQ(Network::FilterStatus::StopIteration, filter_->onNewConnection());
+    EXPECT_EQ(filter_->config_->stats().sessions_.value(), 1);
   }
   MySQLSession downstream_session_;
   MySQLSession upstream_session_;
   MockDecoder* downstream_decoder_{new MockDecoder(downstream_session_)};
   MockDecoder* upstream_decoder_{new MockDecoder(upstream_session_)};
   Upstream::MockClusterManager cm_;
+  Network::MockReadFilterCallbacks read_callbacks_;
+
   RouteSharedPtr route_;
   RouterSharedPtr router_;
   MySQLFilterPtr filter_;
   Stats::MockStore store_;
   Api::MockApi api_;
 };
+
+TEST_F(MySQLFilterTest, ConnectButNoClusterInRoute) { connectionComeNoClusterInRoute(); }
+
+TEST_F(MySQLFilterTest, ConnectButNoCluster) { connectionComeNoCluster(); }
+
+TEST_F(MySQLFilterTest, ConnectButNoHost) { connectionComeNoHost(); }
+
+TEST_F(MySQLFilterTest, ConnectOk) { connectionOk(); }
 
 } // namespace MySQLProxy
 } // namespace NetworkFilters
