@@ -129,7 +129,7 @@ void MySQLFilter::onPoolFailure(Tcp::ConnectionPool::PoolFailureReason reason,
               host_info);
     break;
   default:
-    ENVOY_LOG(error, "mysql proxy upstream connection pool: unknown error, {}", host_info);
+    ENVOY_LOG(info, "mysql proxy upstream connection pool: unknown error, {}", host_info);
     break;
   }
   canceler_ = nullptr;

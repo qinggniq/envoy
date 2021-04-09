@@ -205,7 +205,7 @@ void MySQLTerminalFitlerTest::serverSendGreet() {
   EXPECT_CALL(*upstream_decoder_, onData(_)).WillOnce(Invoke([&](Buffer::Instance& data) {
     EXPECT_EQ(data.toString(), greet.encodePacket().toString());
     EXPECT_CALL(*upstream_decoder_, getSession()).Times(2);
-    EXPECT_CALL(*downstream_decoder_, getSession()).Times(4);
+    EXPECT_CALL(*downstream_decoder_, getSession()).Times(3);
 
     EXPECT_CALL(read_callbacks_, connection());
     EXPECT_CALL(read_callbacks_.connection_, write(_, false));
@@ -233,6 +233,7 @@ void MySQLTerminalFitlerTest::clientSendSsl() {
     EXPECT_CALL(store_.counter_, inc()).Times(2);
     EXPECT_CALL(read_callbacks_, connection());
     EXPECT_CALL(read_callbacks_.connection_, close(Network::ConnectionCloseType::NoFlush));
+    EXPECT_CALL(connection_, close(Network::ConnectionCloseType::NoFlush));
 
     downstreamDecoder().onClientLogin(ssl);
   }));
