@@ -16,8 +16,8 @@
 #include "extensions/filters/network/mysql_proxy/mysql_filter.h"
 #include "extensions/filters/network/mysql_proxy/mysql_session.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
-
 #include "extensions/filters/network/mysql_proxy/route.h"
+
 #include "test/mocks/api/mocks.h"
 #include "test/mocks/network/mocks.h"
 #include "test/mocks/tcp/mocks.h"
