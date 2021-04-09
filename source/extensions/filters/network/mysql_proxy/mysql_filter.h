@@ -74,6 +74,10 @@ using MySQLFilterConfigSharedPtr = std::shared_ptr<MySQLFilterConfig>;
 class MySQLFilter : public Tcp::ConnectionPool::Callbacks,
                     public Network::ReadFilter,
                     public Logger::Loggable<Logger::Id::filter> {
+
+  friend class MySQLFilterTest;
+  friend class MySQLTerminalFitlerTest;
+
 public:
   MySQLFilter(MySQLFilterConfigSharedPtr config, RouterSharedPtr router,
               DecoderFactory& decoder_factory);
@@ -149,10 +153,10 @@ public:
   void stepServerSession(uint8_t expected_seq, MySQLSession::State expected_state);
   void doDecode(Buffer::Instance& buffer);
   DecoderPtr createDecoder(DecoderCallbacks& callbacks);
-
-private:
+  friend class MySQLTerminalFitlerTest;
   friend class MySQLFilterTest;
 
+private:
   Network::ReadFilterCallbacks* read_callbacks_{};
   MySQLFilterConfigSharedPtr config_;
   DownstreamDecoderPtr downstream_decoder_;

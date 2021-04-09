@@ -149,3 +149,12 @@ envoy_cc_extension(
         "@envoy_api//envoy/extensions/filters/network/mysql_proxy/v3:pkg_cc_proto",
     ],
 )
+
+envoy_cc_library(
+    name = "message_helper_lib",
+    srcs = ["message_helper.cc"],
+    hdrs = ["message_helper.h"],
+    deps = [
+        ":codec_lib",
+    ],
+)

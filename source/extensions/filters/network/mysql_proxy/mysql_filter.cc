@@ -112,7 +112,6 @@ void MySQLFilter::onPoolFailure(Tcp::ConnectionPool::PoolFailureReason reason,
   if (host != nullptr) {
     host_info = " remote host address " + host->address()->asString();
   }
-  // triggers the release of the current stream at the end of the filter's callback.
   switch (reason) {
   case Tcp::ConnectionPool::PoolFailureReason::Overflow:
     ENVOY_LOG(info, "mysql proxy upstream connection pool: too many connections, {}", host_info);
@@ -131,7 +130,9 @@ void MySQLFilter::onPoolFailure(Tcp::ConnectionPool::PoolFailureReason reason,
     break;
   default:
     ENVOY_LOG(error, "mysql proxy upstream connection pool: unknown error, {}", host_info);
+    break;
   }
+  canceler_ = nullptr;
   read_callbacks_->connection().close(Network::ConnectionCloseType::NoFlush);
 }
 
