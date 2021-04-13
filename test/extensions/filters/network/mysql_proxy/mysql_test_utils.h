@@ -48,8 +48,6 @@ public:
   std::string encodeClientLogin(uint16_t client_cap, std::string user, uint8_t seq);
   std::string encodeClientLoginResp(uint8_t srv_resp, uint8_t it = 0, uint8_t seq_force = 0);
   std::string encodeAuthSwitchResp();
-
-  static std::string encodeUint32Hex(const uint32_t* data, size_t len);
   std::string encodeMessage(uint32_t packet_len, uint8_t it = 0, uint8_t seq_force = 0);
 };
 
