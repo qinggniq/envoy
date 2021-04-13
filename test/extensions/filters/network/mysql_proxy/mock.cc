@@ -1,5 +1,6 @@
 #include "mock.h"
 
+#include "extensions/filters/network/mysql_proxy/mysql_session.h"
 #include "extensions/filters/network/mysql_proxy/route.h"
 
 using testing::_;
@@ -13,7 +14,7 @@ namespace MySQLProxy {
 
 MockRouter::MockRouter(RouteSharedPtr route) : route(route) {
   ON_CALL(*this, upstreamPool(_)).WillByDefault(Return(route));
-  ON_CALL(*this, primaryPool()).WillByDefault(Return(route));
+  ON_CALL(*this, defaultPool()).WillByDefault(Return(route));
 }
 
 MockRoute::MockRoute(Upstream::ThreadLocalCluster* instance, const std::string& name)
@@ -22,11 +23,9 @@ MockRoute::MockRoute(Upstream::ThreadLocalCluster* instance, const std::string& 
   ON_CALL(*this, name()).WillByDefault(ReturnRef(cluster_name));
 }
 
-MockDecoder::MockDecoder(const MySQLSession& session) : session_(session) {
-  ON_CALL(*this, getSession()).WillByDefault([&]() -> MySQLSession& {
-    std::cout << "call getSession()" << std::endl;
-    return session_;
-  });
+MockDecoder::MockDecoder() {
+  session = std::make_unique<MySQLSession>();
+  ON_CALL(*this, getSession()).WillByDefault([&]() -> MySQLSession& { return *session; });
 }
 
 } // namespace MySQLProxy

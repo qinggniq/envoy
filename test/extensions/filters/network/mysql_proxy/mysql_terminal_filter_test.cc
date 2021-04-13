@@ -7,6 +7,7 @@
 
 #include "common/buffer/buffer_impl.h"
 
+#include "envoy/tcp/conn_pool.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_command.h"
@@ -47,14 +48,16 @@ class MySQLTerminalFitlerTest
       public testing::TestWithParam<Tcp::ConnectionPool::PoolFailureReason> {
 public:
   const std::string yaml_string = R"EOF(
-  routes:
-  - database: db
-    cluster: cluster
+  database_routes:
+    catch_all_route:
+      database: db
+      cluster: cluster
   stat_prefix: foo
   )EOF";
   using MySQLFilterPtr = std::unique_ptr<MySQLFilter>;
   DecoderPtr create(DecoderCallbacks&) override {
     if (filter_ == nullptr) {
+      downstream_decoder_ = new MockDecoder();
       return DecoderPtr{downstream_decoder_};
       ;
     }
@@ -62,7 +65,9 @@ public:
       return nullptr;
     }
     if (!filter_->upstream_decoder_) {
+      upstream_decoder_ = new MockDecoder();
       return DecoderPtr{upstream_decoder_};
+      ;
     }
     return nullptr;
   }
@@ -78,10 +83,10 @@ public:
     filter_->initializeReadFilterCallbacks(read_callbacks_);
   }
 
-  void connectionComeNoClusterInRoute() {
+  void connectionComeNoDefaultClusterInConfig() {
     auto router = std::make_shared<MockRouter>(nullptr);
     filter_->router_ = router;
-    EXPECT_CALL(*router, primaryPool());
+    EXPECT_CALL(*router, defaultPool());
     EXPECT_CALL(read_callbacks_, connection());
     EXPECT_CALL(read_callbacks_.connection_, close(Network::ConnectionCloseType::NoFlush));
     EXPECT_CALL(store_.counter_, inc);
@@ -89,12 +94,12 @@ public:
     EXPECT_EQ(Network::FilterStatus::StopIteration, filter_->onNewConnection());
   }
 
-  void connectionComeNoCluster() {
+  void connectionComeClusterNotExisit() {
     auto route = std::make_shared<MockRoute>(nullptr, cluster_name);
     auto router = std::make_shared<MockRouter>(route);
 
     filter_->router_ = router;
-    EXPECT_CALL(*router, primaryPool());
+    EXPECT_CALL(*router, defaultPool());
     EXPECT_CALL(*route, upstream());
 
     EXPECT_CALL(read_callbacks_, connection());
@@ -108,7 +113,7 @@ public:
     auto route = std::make_shared<MockRoute>(&cm_.thread_local_cluster_, cluster_name);
     auto router = std::make_shared<MockRouter>(route);
     filter_->router_ = router;
-    EXPECT_CALL(*router, primaryPool());
+    EXPECT_CALL(*router, defaultPool());
     EXPECT_CALL(*route, upstream());
 
     EXPECT_CALL(cm_.thread_local_cluster_,
@@ -128,7 +133,7 @@ public:
     auto route = std::make_shared<MockRoute>(&cm_.thread_local_cluster_, cluster_name);
     auto router = std::make_shared<MockRouter>(route);
     filter_->router_ = router;
-    EXPECT_CALL(*router, primaryPool());
+    EXPECT_CALL(*router, defaultPool());
     EXPECT_CALL(*route, upstream());
 
     EXPECT_CALL(cm_.thread_local_cluster_,
@@ -146,32 +151,40 @@ public:
     EXPECT_CALL(read_callbacks_, continueReading());
     cm_.thread_local_cluster_.tcp_conn_pool_.poolReady(connection_);
     EXPECT_NE(filter_->upstream_decoder_, nullptr);
+    EXPECT_NE(upstreamConnData(), nullptr);
+    EXPECT_NE(downstream_decoder_, nullptr);
+    EXPECT_NE(upstream_decoder_, nullptr);
   }
 
   void serverSendGreet();
 
   void clientSendSsl();
 
+  void clientSendHandShakeReponse();
+
   MySQLFilter::UpstreamDecoder& upstreamDecoder() { return *filter_->upstream_decoder_; }
   MySQLFilter::DownstreamDecoder& downstreamDecoder() { return *filter_->downstream_decoder_; }
+  Tcp::ConnectionPool::MockConnectionData* upstreamConnData() {
+    return dynamic_cast<Tcp::ConnectionPool::MockConnectionData*>(
+        filter_->upstream_conn_data_.get());
+  }
 
-  MySQLSession downstream_session_;
-  MySQLSession upstream_session_;
-  MockDecoder* downstream_decoder_{new MockDecoder(downstream_session_)};
-  MockDecoder* upstream_decoder_{new MockDecoder(upstream_session_)};
   Upstream::MockClusterManager cm_;
   Network::MockClientConnection connection_;
   Network::MockReadFilterCallbacks read_callbacks_;
-
   RouteSharedPtr route_;
   RouterSharedPtr router_;
   MySQLFilterPtr filter_;
+  MockDecoder* downstream_decoder_{};
+  MockDecoder* upstream_decoder_{};
   NiceMock<Stats::MockStore> store_;
 };
 
-TEST_F(MySQLTerminalFitlerTest, ConnectButNoClusterInRoute) { connectionComeNoClusterInRoute(); }
+TEST_F(MySQLTerminalFitlerTest, ConnectButNoClusterInRoute) {
+  connectionComeNoDefaultClusterInConfig();
+}
 
-TEST_F(MySQLTerminalFitlerTest, ConnectButNoCluster) { connectionComeNoCluster(); }
+TEST_F(MySQLTerminalFitlerTest, ConnectButNoCluster) { connectionComeClusterNotExisit(); }
 
 TEST_F(MySQLTerminalFitlerTest, ConnectButNoHost) { connectionComeNoHost(); }
 
@@ -240,10 +253,43 @@ void MySQLTerminalFitlerTest::clientSendSsl() {
   downstreamDecoder().onData(data, false);
 }
 
+void MySQLTerminalFitlerTest::clientSendHandShakeReponse() {
+  auto login = MessageHelper::encodeClientLogin(
+      MySQLTestUtils::getUsername(), MySQLTestUtils::getDb(), MySQLTestUtils::getAuthResp20());
+  login.setSeq(1);
+  auto data = login.encodePacket();
+  EXPECT_CALL(*downstream_decoder_, onData(_)).WillOnce(Invoke([&](Buffer::Instance& data) {
+    EXPECT_EQ(data.toString(), login.encodePacket().toString());
+
+    EXPECT_CALL(*downstream_decoder_, getSession()).Times(2);
+    EXPECT_CALL(*upstream_decoder_, getSession()).Times(3);
+
+    EXPECT_EQ(downstream_decoder_->getSession().getExpectedSeq(), 1);
+    EXPECT_EQ(downstream_decoder_->getSession().getState(), MySQLSession::State::ChallengeReq);
+
+    EXPECT_CALL(store_.counter_, inc()).Times(1);
+
+    EXPECT_CALL(*upstreamConnData(), connection());
+    EXPECT_CALL(connection_, write(_, false));
+
+    downstreamDecoder().onClientLogin(login);
+
+    EXPECT_EQ(upstream_decoder_->getSession().getExpectedSeq(), 2);
+    EXPECT_EQ(upstream_decoder_->getSession().getState(), MySQLSession::State::ChallengeResp41);
+  }));
+  downstreamDecoder().onData(data, false);
+}
+
 TEST_F(MySQLTerminalFitlerTest, GreetThenSslUpgrade) {
   connectOkAndPoolReady();
   serverSendGreet();
   clientSendSsl();
+}
+
+TEST_F(MySQLTerminalFitlerTest, GreetThenResponse) {
+  connectOkAndPoolReady();
+  serverSendGreet();
+  clientSendHandShakeReponse();
 }
 
 } // namespace MySQLProxy

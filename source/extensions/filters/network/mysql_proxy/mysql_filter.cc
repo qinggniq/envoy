@@ -175,11 +175,7 @@ void MySQLFilter::DownstreamDecoder::onClientLogin(ClientLogin& client_login) {
     return;
   }
   send(client_login);
-  if (client_login.isResponse41()) {
-    parent_.stepServerSession(client_login.getSeq() + 1, MySQLSession::State::ChallengeResp41);
-  } else {
-    parent_.stepServerSession(client_login.getSeq() + 1, MySQLSession::State::ChallengeResp320);
-  }
+  parent_.stepServerSession(client_login.getSeq() + 1, MySQLSession::State::ChallengeResp41);
 }
 
 void MySQLFilter::UpstreamDecoder::onClientLoginResponse(ClientLoginResponse& client_login_resp) {
@@ -275,8 +271,8 @@ void MySQLFilter::gotoCommandPhase() {
 Network::FilterStatus MySQLFilter::onNewConnection() {
   config_->stats_.sessions_.inc();
   // we can not know the database name before connect to real backend database, so just connect to
-  // primary cluster backend. TODO(qinggniq) remove it in next pull request.
-  auto primary_route = router_->primaryPool();
+  // catch all cluster backend. TODO(qinggniq) remove it in next pull request.
+  auto primary_route = router_->defaultPool();
   if (primary_route == nullptr) {
     ENVOY_LOG(info, "closed due to there is no cluster in route");
     read_callbacks_->connection().close(Network::ConnectionCloseType::NoFlush);

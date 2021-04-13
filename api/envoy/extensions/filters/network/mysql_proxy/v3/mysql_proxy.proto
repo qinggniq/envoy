@@ -30,12 +30,20 @@ message MySQLProxy {
   option (udpa.annotations.versioning).previous_message_type =
       "envoy.config.filter.network.mysql_proxy.v1alpha1.MySQLProxy";
 
-  message Route {
-    // String database name that must exact match with client connection db name
-    string database = 1 [(validate.rules).string = {min_len: 1}];
+  message DatabaseRoutes {
+    message Route {
+      // String database name that must exact match with client connection db name. https://dev.mysql.com/doc/refman/5.7/en/identifier-length.html
+      string database = 1 [(validate.rules).string = {max_bytes: 64}];
 
-    // Upstream cluster to forward the command to.
-    string cluster = 2 [(validate.rules).string = {min_len: 1}];
+      // Upstream cluster to forward the command to.
+      string cluster = 2 [(validate.rules).string = {min_len: 1}];
+    }
+
+    // [#not-implemented-hide:] List of database routes.
+    repeated Route routes = 1;
+
+    // Optional catch-all route to forward connection that not specific database name.
+    Route catch_all_route = 2;
   }
 
   // The human readable prefix to use when emitting :ref:`statistics
@@ -57,19 +65,21 @@ message MySQLProxy {
   // Example:
   //
   // .. code-block:: yaml
-  //
-  //    routes:
+  //  database_routes:
+  //      routes:
   //      - database: "database_a"
   //        cluster: "cluster_a"
   //      - database: "database_b"
   //        cluster: "cluster_b"
+  //      catch_all_route:
+  //      - cluster: "catch_all_cluster"
   //
   // When using the above routes, the following connect data source names would be sent to:
   //
   // * ``jdbc:mysql://host1:9001/database_a`` would sent command to cluster_a.
   // * ``jdbc:mysql://host1:9001/database_c`` will return ER_ER_BAD_DB_ERROR.
-  // * ``jdbc:mysql://host1:9001/`` will return ER_ER_BAD_DB_ERROR, now envoy not support connect without specific database name.
-  repeated Route routes = 4;
+  // * ``jdbc:mysql://host1:9001/`` will send command to catch_all_cluster.
+  DatabaseRoutes database_routes = 4;
 
   // Downstream client username/password.
   // * If the username/password is not match, then ER_ACCESS_DENIED_ERROR will return;

@@ -35,6 +35,7 @@ public:
   static std::string getVersion() {
     return fmt::format("{0}.{1}.{2}", MYSQL_VER_MAJOR, MYSQL_VER_MINOR, MYSQL_VER_VAR);
   }
+  static std::string getUsername() { return "username"; }
   static std::string getSqlState() { return "HY000"; }
   static std::string getErrorMessage() { return "auth failed"; }
   static std::string getAuthPluginName() { return "mysql_native_password"; }

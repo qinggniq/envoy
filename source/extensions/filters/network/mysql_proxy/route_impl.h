@@ -29,13 +29,13 @@ private:
 
 class RouterImpl : public Router {
 public:
-  RouterImpl(RouteSharedPtr primary_cluster_route,
+  RouterImpl(RouteSharedPtr catch_all_route,
              absl::flat_hash_map<std::string, RouteSharedPtr>&& router);
   RouteSharedPtr upstreamPool(const std::string& db) override;
-  RouteSharedPtr primaryPool() override;
+  RouteSharedPtr defaultPool() override;
 
 private:
-  RouteSharedPtr primary_cluster_route_;
+  RouteSharedPtr catch_all_route_;
   absl::flat_hash_map<std::string, RouteSharedPtr> routes_;
 };
 

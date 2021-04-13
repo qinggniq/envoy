@@ -14,12 +14,14 @@ namespace MySQLProxy {
 
 class MockDecoder : public Decoder {
 public:
-  MockDecoder(const MySQLSession& session);
+  MockDecoder();
   ~MockDecoder() override = default;
   MOCK_METHOD(void, onData, (Buffer::Instance & data));
   MOCK_METHOD(MySQLSession&, getSession, ());
-  MySQLSession session_;
+  std::unique_ptr<MySQLSession> session;
 };
+
+using MockDecoderPtr = std::unique_ptr<MockDecoder>;
 
 class MockDecoderCallbacks : public DecoderCallbacks {
 public:
@@ -40,7 +42,7 @@ public:
   MockRouter(RouteSharedPtr route);
   ~MockRouter() override = default;
   MOCK_METHOD(RouteSharedPtr, upstreamPool, (const std::string&), (override));
-  MOCK_METHOD(RouteSharedPtr, primaryPool, (), (override));
+  MOCK_METHOD(RouteSharedPtr, defaultPool, (), (override));
   RouteSharedPtr route;
 };
 

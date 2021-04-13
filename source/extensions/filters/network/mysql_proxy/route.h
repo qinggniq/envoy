@@ -38,10 +38,10 @@ public:
    */
   virtual RouteSharedPtr upstreamPool(const std::string& db) PURE;
   /**
-   * Returns a connection pool of primary cluster.
+   * Returns a connection pool of default cluster.
    * @return a handle to the connection pool.
    */
-  virtual RouteSharedPtr primaryPool() PURE;
+  virtual RouteSharedPtr defaultPool() PURE;
 };
 
 using RouterSharedPtr = std::shared_ptr<Router>;

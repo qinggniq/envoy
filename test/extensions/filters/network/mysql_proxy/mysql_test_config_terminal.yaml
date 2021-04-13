@@ -33,6 +33,7 @@ static_resources:
             typed_config:
               "@type": type.googleapis.com/envoy.extensions.filters.network.mysql_proxy.v3.MySQLProxy
               stat_prefix: mysql_stats
-              routes:
-              - database: "test"
-                cluster: "cluster_0"
+              database_routes:
+                catch_all_route:
+                  database: "test"
+                  cluster: "cluster_0"

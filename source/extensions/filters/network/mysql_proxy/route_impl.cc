@@ -18,9 +18,9 @@ namespace MySQLProxy {
 RouteImpl::RouteImpl(Upstream::ClusterManager* cm, const std::string& name)
     : cluster_name_(name), cm_(cm) {}
 
-RouterImpl::RouterImpl(RouteSharedPtr primary_cluster_route,
+RouterImpl::RouterImpl(RouteSharedPtr catch_all_route,
                        absl::flat_hash_map<std::string, RouteSharedPtr>&& router)
-    : primary_cluster_route_(primary_cluster_route), routes_(std::move(router)) {}
+    : catch_all_route_(catch_all_route), routes_(std::move(router)) {}
 
 RouteSharedPtr RouterImpl::upstreamPool(const std::string& db) {
   if (routes_.find(db) != routes_.end()) {
@@ -29,7 +29,7 @@ RouteSharedPtr RouterImpl::upstreamPool(const std::string& db) {
   return nullptr;
 }
 
-RouteSharedPtr RouterImpl::primaryPool() { return primary_cluster_route_; }
+RouteSharedPtr RouterImpl::defaultPool() { return catch_all_route_; }
 
 RouteFactoryImpl RouteFactoryImpl::instance;
 
