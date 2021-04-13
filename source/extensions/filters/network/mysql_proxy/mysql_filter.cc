@@ -156,11 +156,28 @@ void MySQLFilter::UpstreamDecoder::onProtocolError() {
   parent_.read_callbacks_->connection().close(Network::ConnectionCloseType::NoFlush);
 }
 
-void MySQLFilter::DownstreamDecoder::onNewMessage(MySQLSession::State) {}
+void MySQLFilter::DownstreamDecoder::onNewMessage(MySQLSession::State state) {
+  // close connection when received message on state NotHandled.
+  if (state == MySQLSession::State::NotHandled) {
+    ENVOY_LOG(info,
+              "connection closed due to unexpected state occurs on client -> proxy communication");
+    parent_.read_callbacks_->connection().close(Network::ConnectionCloseType::NoFlush);
+  }
+}
+
+void MySQLFilter::UpstreamDecoder::onNewMessage(MySQLSession::State state) {
+  // close connection when received message on state NotHandled.
+  if (state == MySQLSession::State::NotHandled) {
+    ENVOY_LOG(
+        info,
+        "connection closed due to unexpected state occurs on proxy -> database communication");
+    parent_.upstream_conn_data_->connection().close(Network::ConnectionCloseType::NoFlush);
+  }
+}
 
 void MySQLFilter::UpstreamDecoder::onServerGreeting(ServerGreeting& greet) {
   ENVOY_LOG(debug, "server {} send challenge", greet.getVersion());
-  send(greet);
+  send(greet, false);
   parent_.stepClientSession(greet.getSeq() + 1, MySQLSession::State::ChallengeReq);
 }
 
@@ -174,53 +191,62 @@ void MySQLFilter::DownstreamDecoder::onClientLogin(ClientLogin& client_login) {
     parent_.read_callbacks_->connection().close(Network::ConnectionCloseType::NoFlush);
     return;
   }
-  send(client_login);
+  send(client_login, false);
   parent_.stepServerSession(client_login.getSeq() + 1, MySQLSession::State::ChallengeResp41);
 }
 
 void MySQLFilter::UpstreamDecoder::onClientLoginResponse(ClientLoginResponse& client_login_resp) {
-  send(client_login_resp);
   // auth passed, step into command phase
   switch (client_login_resp.getRespCode()) {
   case MYSQL_RESP_OK:
+    send(client_login_resp, false);
     ENVOY_LOG(debug, "login success");
     parent_.gotoCommandPhase();
     break;
   case MYSQL_RESP_AUTH_SWITCH:
+    send(client_login_resp, false);
     parent_.config_->stats().auth_switch_request_.inc();
     parent_.stepClientSession(client_login_resp.getSeq() + 1, MySQLSession::State::AuthSwitchResp);
     break;
+  // When resp code is MYSQL_RESP_ERR or MYSQL_RESP_MORE, client should close connection.
   case MYSQL_RESP_ERR:
+    send(client_login_resp, true);
     parent_.config_->stats().login_failures_.inc();
     parent_.stepClientSession(client_login_resp.getSeq() + 1, MySQLSession::State::Error);
     break;
   case MYSQL_RESP_MORE:
   default:
+    send(client_login_resp, true);
     parent_.stepClientSession(client_login_resp.getSeq() + 1, MySQLSession::State::NotHandled);
+    break;
   }
 }
 
 void MySQLFilter::DownstreamDecoder::onClientSwitchResponse(ClientSwitchResponse& switch_resp) {
-  send(switch_resp);
-  parent_.stepServerSession(switch_resp.getSeq(), MySQLSession::State::AuthSwitchMore);
+  send(switch_resp, false);
+  parent_.stepServerSession(switch_resp.getSeq() + 1, MySQLSession::State::AuthSwitchMore);
 }
 
 void MySQLFilter::UpstreamDecoder::onMoreClientLoginResponse(
     ClientLoginResponse& client_login_resp) {
-  send(client_login_resp);
   switch (client_login_resp.getRespCode()) {
   case MYSQL_RESP_OK:
+    send(client_login_resp, false);
     parent_.gotoCommandPhase();
     break;
-
   case MYSQL_RESP_MORE:
+    send(client_login_resp, false);
     parent_.stepClientSession(client_login_resp.getSeq() + 1, MySQLSession::State::AuthSwitchResp);
     break;
+    // When resp code is MYSQL_RESP_AUTH_SWITCH or MYSQL_RESP_ERR or others, client should close
+    // connection.
   case MYSQL_RESP_ERR:
+    send(client_login_resp, true);
     parent_.config_->stats().login_failures_.inc();
     parent_.stepClientSession(client_login_resp.getSeq() + 1, MySQLSession::State::Error);
     break;
   default:
+    send(client_login_resp, true);
     parent_.stepClientSession(client_login_resp.getSeq() + 1, MySQLSession::State::NotHandled);
     break;
   }
@@ -248,17 +274,19 @@ void MySQLFilter::DownstreamDecoder::onCommand(Command& command) {
     }
   }
   if (command.getCmd() == Command::Cmd::Quit) {
+    send(command, true);
     parent_.read_callbacks_->connection().close(Network::ConnectionCloseType::NoFlush);
     return;
   }
-  send(command);
+  send(command, false);
   // client request will reset seq id
   parent_.gotoCommandPhase();
 }
 
 void MySQLFilter::UpstreamDecoder::onCommandResponse(CommandResponse& resp) {
-  send(resp);
-  // server response might contain more than one packets, so seq id expect to be seq + 1
+  send(resp, false);
+  // server response might contain more than one packets, so seq id expect to be seq + 1, wait for
+  // client command request to reset server seq id.
   parent_.stepServerSession(resp.getSeq() + 1, MySQLSession::State::ReqResp);
 }
 
@@ -302,16 +330,16 @@ Network::FilterStatus MySQLFilter::DownstreamDecoder::onData(Buffer::Instance& b
   return Network::FilterStatus::Continue;
 }
 
-void MySQLFilter::UpstreamDecoder::send(MySQLCodec& message) {
+void MySQLFilter::UpstreamDecoder::send(MySQLCodec& message, bool end_stream) {
   auto buffer = message.encodePacket();
   ENVOY_LOG(debug, "send data to client, len {}", buffer.length());
-  parent_.read_callbacks_->connection().write(buffer, false);
+  parent_.read_callbacks_->connection().write(buffer, end_stream);
 }
 
-void MySQLFilter::DownstreamDecoder::send(MySQLCodec& message) {
+void MySQLFilter::DownstreamDecoder::send(MySQLCodec& message, bool end_stream) {
   auto buffer = message.encodePacket();
   ENVOY_LOG(debug, "send data to server, len {}", buffer.length());
-  parent_.upstream_conn_data_->connection().write(buffer, false);
+  parent_.upstream_conn_data_->connection().write(buffer, end_stream);
 }
 
 void MySQLFilter::UpstreamDecoder::onUpstreamData(Buffer::Instance& buffer, bool) {

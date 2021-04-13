@@ -111,7 +111,7 @@ public:
     void onEvent(Network::ConnectionEvent event) override;
     void onAboveWriteBufferHighWatermark() override {}
     void onBelowWriteBufferLowWatermark() override {}
-    void send(MySQLCodec& message);
+    void send(MySQLCodec& message, bool end_stream);
 
     void passAuth();
     DecoderPtr decoder_;
@@ -124,7 +124,7 @@ public:
 
     // DecoderCallbacks
     void onProtocolError() override;
-    void onNewMessage(MySQLSession::State) override {}
+    void onNewMessage(MySQLSession::State) override;
     void onServerGreeting(ServerGreeting&) override;
     void onClientLogin(ClientLogin&) override {}
     void onClientLoginResponse(ClientLoginResponse& message) override;
@@ -138,7 +138,7 @@ public:
     void onEvent(Network::ConnectionEvent event) override;
     void onAboveWriteBufferHighWatermark() override {}
     void onBelowWriteBufferLowWatermark() override {}
-    void send(MySQLCodec& message);
+    void send(MySQLCodec& message, bool end_stream);
     DecoderPtr decoder_;
     Buffer::OwnedImpl buffer_;
     MySQLFilter& parent_;
