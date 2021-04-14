@@ -78,7 +78,8 @@ public:
     router_ = std::make_shared<MockRouter>(route_);
     filter_ = std::make_unique<MySQLFilter>(config, router_, *this);
 
-    EXPECT_CALL(read_callbacks_, connection());
+    EXPECT_CALL(read_callbacks_, connection()).Times(2);
+    EXPECT_CALL(read_callbacks_.connection_, enableHalfClose(true));
     EXPECT_CALL(read_callbacks_.connection_, addConnectionCallbacks(_));
     filter_->initializeReadFilterCallbacks(read_callbacks_);
   }
@@ -157,6 +158,7 @@ public:
     EXPECT_CALL(*(cm_.thread_local_cluster_.tcp_conn_pool_.connection_data_.get()),
                 addUpstreamCallbacks(_));
     EXPECT_CALL(read_callbacks_, continueReading());
+    EXPECT_CALL(connection_, enableHalfClose(true));
     cm_.thread_local_cluster_.tcp_conn_pool_.poolReady(connection_);
     EXPECT_NE(filter_->upstream_decoder_, nullptr);
     EXPECT_NE(upstreamConnData(), nullptr);

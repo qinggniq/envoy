@@ -42,6 +42,7 @@ MySQLFilter::MySQLFilter(MySQLFilterConfigSharedPtr config, RouterSharedPtr rout
 
 void MySQLFilter::initializeReadFilterCallbacks(Network::ReadFilterCallbacks& callbacks) {
   read_callbacks_ = &callbacks;
+  read_callbacks_->connection().enableHalfClose(true);
   read_callbacks_->connection().addConnectionCallbacks(*downstream_decoder_);
 }
 
@@ -99,6 +100,7 @@ void MySQLFilter::onPoolReady(Envoy::Tcp::ConnectionPool::ConnectionDataPtr&& co
   canceler_ = nullptr;
   upstream_conn_data_ = std::move(conn);
   upstream_decoder_ = std::make_unique<UpstreamDecoder>(*this);
+  upstream_conn_data_->connection().enableHalfClose(true);
   upstream_conn_data_->addUpstreamCallbacks(*upstream_decoder_);
 
   read_callbacks_->continueReading();
