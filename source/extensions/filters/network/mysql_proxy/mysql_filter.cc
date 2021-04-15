@@ -141,7 +141,7 @@ void MySQLFilter::UpstreamDecoder::onProtocolError() {
 
 void MySQLFilter::DownstreamDecoder::onNewMessage(MySQLSession::State state) {
   // close connection when received message on state NotHandled.
-  if (state == MySQLSession::State::NotHandled) {
+  if (state == MySQLSession::State::NotHandled || state == MySQLSession::State::Error) {
     ENVOY_LOG(info,
               "connection closed due to unexpected state occurs on client -> proxy communication");
     parent_.read_callbacks_->connection().close(Network::ConnectionCloseType::NoFlush);
@@ -150,7 +150,7 @@ void MySQLFilter::DownstreamDecoder::onNewMessage(MySQLSession::State state) {
 
 void MySQLFilter::UpstreamDecoder::onNewMessage(MySQLSession::State state) {
   // close connection when received message on state NotHandled.
-  if (state == MySQLSession::State::NotHandled) {
+  if (state == MySQLSession::State::NotHandled || state == MySQLSession::State::Error) {
     ENVOY_LOG(
         info,
         "connection closed due to unexpected state occurs on proxy -> database communication");
