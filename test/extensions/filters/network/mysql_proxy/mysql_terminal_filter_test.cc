@@ -4,10 +4,10 @@
 #include "envoy/common/conn_pool.h"
 #include "envoy/common/exception.h"
 #include "envoy/extensions/filters/network/mysql_proxy/v3/mysql_proxy.pb.h"
+#include "envoy/tcp/conn_pool.h"
 
 #include "common/buffer/buffer_impl.h"
 
-#include "envoy/tcp/conn_pool.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_command.h"
@@ -295,7 +295,7 @@ void MySQLTerminalFitlerTest::clientSendHandShakeReponse() {
     EXPECT_EQ(downstream_decoder_->getSession().getExpectedSeq(), 1);
     EXPECT_EQ(downstream_decoder_->getSession().getState(), MySQLSession::State::ChallengeReq);
 
-    EXPECT_CALL(store_.counter_, inc()).Times(1);
+    EXPECT_CALL(store_.counter_, inc());
 
     EXPECT_CALL(*upstreamConnData(), connection());
     EXPECT_CALL(connection_, write(_, false));
@@ -349,7 +349,7 @@ void MySQLTerminalFitlerTest::serverSendError() {
     EXPECT_CALL(read_callbacks_, connection());
     EXPECT_CALL(read_callbacks_.connection_, write(_, false));
 
-    EXPECT_CALL(store_.counter_, inc()).Times(1);
+    EXPECT_CALL(store_.counter_, inc());
 
     EXPECT_EQ(upstream_decoder_->getSession().getExpectedSeq(), 2);
     EXPECT_EQ(upstream_decoder_->getSession().getState(), MySQLSession::State::ChallengeResp41);
@@ -381,7 +381,7 @@ void MySQLTerminalFitlerTest::serverSendAuthSwitch() {
     EXPECT_CALL(read_callbacks_, connection());
     EXPECT_CALL(read_callbacks_.connection_, write(_, false));
 
-    EXPECT_CALL(store_.counter_, inc()).Times(1);
+    EXPECT_CALL(store_.counter_, inc());
 
     EXPECT_EQ(upstream_decoder_->getSession().getExpectedSeq(), 2);
     EXPECT_EQ(upstream_decoder_->getSession().getState(), MySQLSession::State::ChallengeResp41);
@@ -503,7 +503,7 @@ void MySQLTerminalFitlerTest::serverSendClientSwitchError() {
     EXPECT_CALL(read_callbacks_, connection());
     EXPECT_CALL(read_callbacks_.connection_, write(_, false));
 
-    EXPECT_CALL(store_.counter_, inc()).Times(1);
+    EXPECT_CALL(store_.counter_, inc());
 
     EXPECT_EQ(upstream_decoder_->getSession().getExpectedSeq(), 4);
     EXPECT_EQ(upstream_decoder_->getSession().getState(), MySQLSession::State::AuthSwitchMore);
@@ -595,7 +595,7 @@ void MySQLTerminalFitlerTest::clientSendQuery() {
     EXPECT_EQ(downstream_decoder_->getSession().getExpectedSeq(), MYSQL_REQUEST_PKT_NUM);
     EXPECT_EQ(downstream_decoder_->getSession().getState(), MySQLSession::State::Req);
 
-    EXPECT_CALL(store_.counter_, inc()).Times(1);
+    EXPECT_CALL(store_.counter_, inc());
 
     EXPECT_CALL(read_callbacks_, connection()).Times(2);
     EXPECT_CALL(read_callbacks_.connection_, streamInfo()).Times(2);
@@ -629,7 +629,7 @@ void MySQLTerminalFitlerTest::clientSendInvalidQuery() {
     EXPECT_EQ(downstream_decoder_->getSession().getExpectedSeq(), MYSQL_REQUEST_PKT_NUM);
     EXPECT_EQ(downstream_decoder_->getSession().getState(), MySQLSession::State::Req);
 
-    EXPECT_CALL(store_.counter_, inc()).Times(1);
+    EXPECT_CALL(store_.counter_, inc());
 
     EXPECT_CALL(read_callbacks_, connection());
     EXPECT_CALL(read_callbacks_.connection_, streamInfo());
