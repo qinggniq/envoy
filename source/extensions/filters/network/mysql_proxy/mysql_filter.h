@@ -96,7 +96,6 @@ public:
   struct DownstreamDecoder : public DecoderCallbacks, public Network::ConnectionCallbacks {
     DownstreamDecoder(MySQLFilter& filter);
     Network::FilterStatus onData(Buffer::Instance& buffer, bool);
-    void doDecode(Buffer::Instance&);
     // DecoderCallbacks
     void onProtocolError() override;
     void onNewMessage(MySQLSession::State state) override;
@@ -111,7 +110,7 @@ public:
     void onEvent(Network::ConnectionEvent event) override;
     void onAboveWriteBufferHighWatermark() override {}
     void onBelowWriteBufferLowWatermark() override {}
-    void send(MySQLCodec& message, bool end_stream);
+    void send(MySQLCodec& message);
 
     void passAuth();
     DecoderPtr decoder_;
@@ -138,7 +137,7 @@ public:
     void onEvent(Network::ConnectionEvent event) override;
     void onAboveWriteBufferHighWatermark() override {}
     void onBelowWriteBufferLowWatermark() override {}
-    void send(MySQLCodec& message, bool end_stream);
+    void send(MySQLCodec& message);
     DecoderPtr decoder_;
     Buffer::OwnedImpl buffer_;
     MySQLFilter& parent_;
@@ -151,7 +150,6 @@ public:
   void stepSession(MySQLSession& session, uint8_t expected_seq, MySQLSession::State expected_state);
   void stepClientSession(uint8_t expected_seq, MySQLSession::State expected_state);
   void stepServerSession(uint8_t expected_seq, MySQLSession::State expected_state);
-  void doDecode(Buffer::Instance& buffer);
   DecoderPtr createDecoder(DecoderCallbacks& callbacks);
   friend class MySQLTerminalFitlerTest;
   friend class MySQLFilterTest;

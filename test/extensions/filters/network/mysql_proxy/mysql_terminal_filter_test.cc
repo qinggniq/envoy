@@ -78,8 +78,7 @@ public:
     router_ = std::make_shared<MockRouter>(route_);
     filter_ = std::make_unique<MySQLFilter>(config, router_, *this);
 
-    EXPECT_CALL(read_callbacks_, connection()).Times(2);
-    EXPECT_CALL(read_callbacks_.connection_, enableHalfClose(true));
+    EXPECT_CALL(read_callbacks_, connection());
     EXPECT_CALL(read_callbacks_.connection_, addConnectionCallbacks(_));
     filter_->initializeReadFilterCallbacks(read_callbacks_);
   }
@@ -153,12 +152,20 @@ public:
     EXPECT_EQ(Network::FilterStatus::StopIteration, filter_->onNewConnection());
   }
 
+  void connectClosedAndPoolNotReady() {
+    connectionOk();
+    EXPECT_CALL(*(dynamic_cast<Envoy::ConnectionPool::MockCancellable*>(filter_->canceler_)),
+                cancel(_));
+    EXPECT_EQ(filter_->upstream_conn_data_, nullptr);
+    read_callbacks_.connection_.close(Network::ConnectionCloseType::NoFlush);
+    EXPECT_EQ(filter_->canceler_, nullptr);
+  }
+
   void connectOkAndPoolReady() {
     connectionOk();
     EXPECT_CALL(*(cm_.thread_local_cluster_.tcp_conn_pool_.connection_data_.get()),
                 addUpstreamCallbacks(_));
     EXPECT_CALL(read_callbacks_, continueReading());
-    EXPECT_CALL(connection_, enableHalfClose(true));
     cm_.thread_local_cluster_.tcp_conn_pool_.poolReady(connection_);
     EXPECT_NE(filter_->upstream_decoder_, nullptr);
     EXPECT_NE(upstreamConnData(), nullptr);
@@ -253,8 +260,10 @@ void MySQLTerminalFitlerTest::clientSendSsl() {
   auto ssl = MessageHelper::encodeSslUpgrade();
   ssl.setSeq(1);
   auto data = ssl.encodePacket();
+  EXPECT_CALL(read_callbacks_, connection());
   EXPECT_CALL(*downstream_decoder_, onData(_)).WillOnce(Invoke([&](Buffer::Instance& data) {
     EXPECT_EQ(data.toString(), ssl.encodePacket().toString());
+
     data.drain(data.length());
     EXPECT_CALL(*downstream_decoder_, getSession()).Times(2);
 
@@ -276,6 +285,7 @@ void MySQLTerminalFitlerTest::clientSendHandShakeReponse() {
       MySQLTestUtils::getUsername(), MySQLTestUtils::getDb(), MySQLTestUtils::getAuthResp20());
   login.setSeq(1);
   auto data = login.encodePacket();
+  EXPECT_CALL(read_callbacks_, connection());
   EXPECT_CALL(*downstream_decoder_, onData(_)).WillOnce(Invoke([&](Buffer::Instance& data) {
     EXPECT_EQ(data.toString(), login.encodePacket().toString());
     data.drain(data.length());
@@ -337,7 +347,7 @@ void MySQLTerminalFitlerTest::serverSendError() {
     EXPECT_CALL(*downstream_decoder_, getSession()).Times(5);
 
     EXPECT_CALL(read_callbacks_, connection());
-    EXPECT_CALL(read_callbacks_.connection_, write(_, true));
+    EXPECT_CALL(read_callbacks_.connection_, write(_, false));
 
     EXPECT_CALL(store_.counter_, inc()).Times(1);
 
@@ -403,7 +413,7 @@ void MySQLTerminalFitlerTest::serverSendAuthMore() {
     EXPECT_CALL(*downstream_decoder_, getSession()).Times(5);
 
     EXPECT_CALL(read_callbacks_, connection());
-    EXPECT_CALL(read_callbacks_.connection_, write(_, true));
+    EXPECT_CALL(read_callbacks_.connection_, write(_, false));
 
     EXPECT_EQ(upstream_decoder_->getSession().getExpectedSeq(), 2);
     EXPECT_EQ(upstream_decoder_->getSession().getState(), MySQLSession::State::ChallengeResp41);
@@ -425,6 +435,7 @@ void MySQLTerminalFitlerTest::clientSendAuthSwitchResponse() {
   auto switch_resp = MessageHelper::encodeSwithResponse(MySQLTestUtils::getAuthResp20());
   switch_resp.setSeq(3);
   auto data = switch_resp.encodePacket();
+  EXPECT_CALL(read_callbacks_, connection());
   EXPECT_CALL(*downstream_decoder_, onData(_)).WillOnce(Invoke([&](Buffer::Instance& data) {
     EXPECT_EQ(data.toString(), switch_resp.encodePacket().toString());
     data.drain(data.length());
@@ -490,7 +501,7 @@ void MySQLTerminalFitlerTest::serverSendClientSwitchError() {
     EXPECT_CALL(*downstream_decoder_, getSession()).Times(5);
 
     EXPECT_CALL(read_callbacks_, connection());
-    EXPECT_CALL(read_callbacks_.connection_, write(_, true));
+    EXPECT_CALL(read_callbacks_.connection_, write(_, false));
 
     EXPECT_CALL(store_.counter_, inc()).Times(1);
 
@@ -551,7 +562,7 @@ void MySQLTerminalFitlerTest::serverSendClientSwitchSwitch() {
     EXPECT_CALL(*downstream_decoder_, getSession()).Times(5);
 
     EXPECT_CALL(read_callbacks_, connection());
-    EXPECT_CALL(read_callbacks_.connection_, write(_, true));
+    EXPECT_CALL(read_callbacks_.connection_, write(_, false));
 
     EXPECT_EQ(upstream_decoder_->getSession().getExpectedSeq(), 4);
     EXPECT_EQ(upstream_decoder_->getSession().getState(), MySQLSession::State::AuthSwitchMore);
@@ -572,6 +583,7 @@ void MySQLTerminalFitlerTest::clientSendQuery() {
   auto command = MessageHelper::encodeCommand(Command::Cmd::Query, "select * from t;", "", true);
   command.setSeq(0);
   auto data = command.encodePacket();
+  EXPECT_CALL(read_callbacks_, connection());
   EXPECT_CALL(*downstream_decoder_, onData(_)).WillOnce(Invoke([&](Buffer::Instance& data) {
     EXPECT_EQ(data.toString(), command.encodePacket().toString());
     data.drain(data.length());
@@ -605,6 +617,7 @@ void MySQLTerminalFitlerTest::clientSendInvalidQuery() {
   auto command = MessageHelper::encodeCommand(Command::Cmd::Query, "slecet * from t;", "", true);
   command.setSeq(0);
   auto data = command.encodePacket();
+  EXPECT_CALL(read_callbacks_, connection());
   EXPECT_CALL(*downstream_decoder_, onData(_)).WillOnce(Invoke([&](Buffer::Instance& data) {
     EXPECT_EQ(data.toString(), command.encodePacket().toString());
     data.drain(data.length());
@@ -639,6 +652,7 @@ void MySQLTerminalFitlerTest::clientSendQuit() {
   auto quit = MessageHelper::encodeCommand(Command::Cmd::Quit, "", "", false);
   quit.setSeq(0);
   auto data = quit.encodePacket();
+  EXPECT_CALL(read_callbacks_, connection());
   EXPECT_CALL(*downstream_decoder_, onData(_)).WillOnce(Invoke([&](Buffer::Instance& data) {
     EXPECT_EQ(data.toString(), quit.encodePacket().toString());
     data.drain(data.length());
@@ -654,7 +668,7 @@ void MySQLTerminalFitlerTest::clientSendQuit() {
     EXPECT_CALL(read_callbacks_.connection_, close(Network::ConnectionCloseType::NoFlush));
 
     EXPECT_CALL(*upstreamConnData(), connection()).Times(2);
-    EXPECT_CALL(connection_, write(_, true));
+    EXPECT_CALL(connection_, write(_, false));
     EXPECT_CALL(connection_, close(Network::ConnectionCloseType::NoFlush));
 
     downstreamDecoder().onCommand(quit);
@@ -717,6 +731,12 @@ TEST_F(MySQLTerminalFitlerTest, ConnectButNoHost) {
 TEST_F(MySQLTerminalFitlerTest, ConnectOk) {
   setup();
   connectionOk();
+  teardown();
+}
+
+TEST_F(MySQLTerminalFitlerTest, ConnectClosedAndPoolNotReady) {
+  setup();
+  connectClosedAndPoolNotReady();
   teardown();
 }
 
