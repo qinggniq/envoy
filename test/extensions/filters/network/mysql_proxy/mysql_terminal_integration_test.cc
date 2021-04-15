@@ -19,7 +19,7 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace MySQLProxy {
 
-constexpr int SESSIONS = 5;
+constexpr int SESSIONS = 1;
 
 class MySQLIntegrationTest : public testing::TestWithParam<Network::Address::IpVersion>,
                              public MySQLTestUtils,
