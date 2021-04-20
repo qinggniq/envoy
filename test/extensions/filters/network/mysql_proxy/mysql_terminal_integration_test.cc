@@ -1,3 +1,4 @@
+#include "envoy/network/address.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin.h"
 #include "extensions/filters/network/mysql_proxy/mysql_codec_clogin_resp.h"
@@ -19,7 +20,7 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace MySQLProxy {
 
-constexpr int SESSIONS = 1;
+constexpr int SESSIONS = 5;
 
 class MySQLIntegrationTest : public testing::TestWithParam<Network::Address::IpVersion>,
                              public MySQLTestUtils,
@@ -27,7 +28,7 @@ class MySQLIntegrationTest : public testing::TestWithParam<Network::Address::IpV
   std::string mysqlConfig() {
     return fmt::format(
         TestEnvironment::readFileToStringForTest(TestEnvironment::runfilesPath(
-            "test/extensions/filters/network/mysql_proxy/mysql_test_config_terminal.yaml")),
+            "test/extensions/filters/network/mysql_proxy/mysql_test_terminal_config.yaml")),
         Platform::null_device_path, Network::Test::getLoopbackAddressString(GetParam()),
         Network::Test::getLoopbackAddressString(GetParam()),
         Network::Test::getAnyAddressString(GetParam()));
@@ -96,7 +97,6 @@ TEST_P(MySQLIntegrationTest, MySQLLoginTest) {
   tcp_client->waitForData(str, true);
 
   tcp_client->close();
-  // ASSERT_TRUE(fake_upstream_connection->waitForDisconnect());
 
   test_server_->waitForCounterGe("mysql.mysql_stats.login_attempts", 1);
   EXPECT_EQ(test_server_->counter("mysql.mysql_stats.login_failures")->value(), 0);

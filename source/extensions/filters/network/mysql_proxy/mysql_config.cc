@@ -14,6 +14,7 @@
 #include "extensions/filters/network/mysql_proxy/mysql_decoder.h"
 #include "extensions/filters/network/mysql_proxy/mysql_decoder_impl.h"
 #include "extensions/filters/network/mysql_proxy/mysql_filter.h"
+#include "extensions/filters/network/mysql_proxy/mysql_terminal_filter.h"
 #include "extensions/filters/network/mysql_proxy/route.h"
 #include "extensions/filters/network/mysql_proxy/route_impl.h"
 
@@ -30,6 +31,16 @@ NetworkFilters::MySQLProxy::MySQLConfigFactory::createFilterFactoryFromProtoType
     Server::Configuration::FactoryContext& context) {
 
   ASSERT(!proto_config.stat_prefix().empty());
+  const std::string stat_prefix = fmt::format("mysql.{}", proto_config.stat_prefix());
+
+  MySQLFilterConfigSharedPtr filter_config(
+      std::make_shared<MySQLFilterConfig>(stat_prefix, context.scope()));
+
+  if (!proto_config.enable_manage_protocol()) {
+    return [filter_config](Network::FilterManager& filter_manager) -> void {
+      filter_manager.addFilter(std::make_shared<MySQLFilter>(filter_config));
+    };
+  }
 
   absl::flat_hash_map<std::string, RouteSharedPtr> routes;
   RouteSharedPtr catch_all_route = nullptr;
@@ -46,11 +57,9 @@ NetworkFilters::MySQLProxy::MySQLConfigFactory::createFilterFactoryFromProtoType
 
   auto router = std::make_shared<RouterImpl>(catch_all_route, std::move(routes));
 
-  MySQLFilterConfigSharedPtr filter_config(
-      std::make_shared<MySQLFilterConfig>(context.scope(), proto_config));
   return [filter_config, router](Network::FilterManager& filter_manager) -> void {
-    filter_manager.addReadFilter(
-        std::make_shared<MySQLFilter>(filter_config, router, DecoderFactoryImpl::instance_));
+    filter_manager.addReadFilter(std::make_shared<MySQLTerminalFilter>(
+        filter_config, router, DecoderFactoryImpl::instance_));
   };
 }
 

@@ -14,7 +14,7 @@
 #include "extensions/filters/network/mysql_proxy/mysql_codec_greeting.h"
 #include "extensions/filters/network/mysql_proxy/mysql_config.h"
 #include "extensions/filters/network/mysql_proxy/mysql_decoder.h"
-#include "extensions/filters/network/mysql_proxy/mysql_filter.h"
+#include "extensions/filters/network/mysql_proxy/mysql_terminal_filter.h"
 #include "extensions/filters/network/mysql_proxy/mysql_session.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
 #include "extensions/filters/network/mysql_proxy/route.h"
@@ -48,13 +48,14 @@ class MySQLTerminalFitlerTest
       public testing::TestWithParam<Tcp::ConnectionPool::PoolFailureReason> {
 public:
   const std::string yaml_string = R"EOF(
+  enable_manage_protocol: true
   database_routes:
     catch_all_route:
       database: db
       cluster: cluster
   stat_prefix: foo
   )EOF";
-  using MySQLFilterPtr = std::unique_ptr<MySQLFilter>;
+
   DecoderPtr create(DecoderCallbacks&) override {
     if (filter_ == nullptr) {
       downstream_decoder_ = new MockDecoder();
@@ -71,19 +72,19 @@ public:
     }
     return nullptr;
   }
-  void setup() {
+  void SetUp() override {
     auto proto_config = parseProtoFromYaml(yaml_string);
-    MySQLFilterConfigSharedPtr config = std::make_shared<MySQLFilterConfig>(store_, proto_config);
+    MySQLFilterConfigSharedPtr config = std::make_shared<MySQLFilterConfig>("mysql", store_);
     route_ = std::make_shared<MockRoute>(&cm_.thread_local_cluster_, cluster_name);
     router_ = std::make_shared<MockRouter>(route_);
-    filter_ = std::make_unique<MySQLFilter>(config, router_, *this);
+    filter_ = std::make_unique<MySQLTerminalFilter>(config, router_, *this);
 
     EXPECT_CALL(read_callbacks_, connection());
     EXPECT_CALL(read_callbacks_.connection_, addConnectionCallbacks(_));
     filter_->initializeReadFilterCallbacks(read_callbacks_);
   }
 
-  void teardown() {
+  void TearDown() override {
     filter_.reset(nullptr);
     router_.reset();
     route_.reset();
@@ -176,27 +177,19 @@ public:
   void serverSendGreet();
   // seq 1
   void clientSendSsl();
-
   void clientSendHandShakeReponse();
   // seq 2
   void serverSendOk();
-
   void serverSendError();
-
   void serverSendAuthSwitch();
-
   void serverSendAuthMore();
   // seq 3
   void clientSendAuthSwitchResponse();
   // seq 4
   void serverSendClientSwitchOk();
-
   void serverSendClientSwitchError();
-
   void serverSendClientSwitchMore();
-
   void serverSendClientSwitchSwitch();
-
   void clientSendAuthMoreResponse();
 
   // command phase seq 0
@@ -207,19 +200,20 @@ public:
   // command phase seq 1 - N
   void serverSendCommandResponse();
 
-  MySQLFilter::UpstreamDecoder& upstreamDecoder() { return *filter_->upstream_decoder_; }
-  MySQLFilter::DownstreamDecoder& downstreamDecoder() { return *filter_->downstream_decoder_; }
+  MySQLTerminalFilter::UpstreamDecoder& upstreamDecoder() { return *filter_->upstream_decoder_; }
+  MySQLTerminalFilter::DownstreamDecoder& downstreamDecoder() {
+    return *filter_->downstream_decoder_;
+  }
   Tcp::ConnectionPool::MockConnectionData* upstreamConnData() {
     return dynamic_cast<Tcp::ConnectionPool::MockConnectionData*>(
         filter_->upstream_conn_data_.get());
   }
-
   Upstream::MockClusterManager cm_;
   Network::MockClientConnection connection_;
   Network::MockReadFilterCallbacks read_callbacks_;
   RouteSharedPtr route_;
   RouterSharedPtr router_;
-  MySQLFilterPtr filter_;
+  MySQLTerminalFilterPtr filter_;
   MockDecoder* downstream_decoder_{};
   MockDecoder* upstream_decoder_{};
   NiceMock<Stats::MockStore> store_;
@@ -711,126 +705,84 @@ void MySQLTerminalFitlerTest::serverSendCommandResponse() {
 }
 
 TEST_F(MySQLTerminalFitlerTest, ConnectButNoClusterInRoute) {
-  setup();
   connectionComeNoDefaultClusterInConfig();
-  teardown();
 }
 
-TEST_F(MySQLTerminalFitlerTest, ConnectButNoCluster) {
-  setup();
-  connectionComeClusterNotExisit();
-  teardown();
-}
+TEST_F(MySQLTerminalFitlerTest, ConnectButNoCluster) { connectionComeClusterNotExisit(); }
 
-TEST_F(MySQLTerminalFitlerTest, ConnectButNoHost) {
-  setup();
-  connectionComeNoHost();
-  teardown();
-}
+TEST_F(MySQLTerminalFitlerTest, ConnectButNoHost) { connectionComeNoHost(); }
 
-TEST_F(MySQLTerminalFitlerTest, ConnectOk) {
-  setup();
-  connectionOk();
-  teardown();
-}
+TEST_F(MySQLTerminalFitlerTest, ConnectOk) { connectionOk(); }
 
-TEST_F(MySQLTerminalFitlerTest, ConnectClosedAndPoolNotReady) {
-  setup();
-  connectClosedAndPoolNotReady();
-  teardown();
-}
+TEST_F(MySQLTerminalFitlerTest, ConnectClosedAndPoolNotReady) { connectClosedAndPoolNotReady(); }
 
 TEST_P(MySQLTerminalFitlerTest, ConnectOkButPoolFailed) {
-  setup();
+
   connectionOk();
   EXPECT_CALL(store_.counter_, inc);
   EXPECT_CALL(read_callbacks_, connection());
   EXPECT_CALL(read_callbacks_.connection_, close(Network::ConnectionCloseType::NoFlush));
 
   cm_.thread_local_cluster_.tcp_conn_pool_.poolFailure(GetParam());
-  teardown();
 }
 
-TEST_F(MySQLTerminalFitlerTest, ConnectOkAndPoolReady) {
-  setup();
-  connectOkAndPoolReady();
-  teardown();
-}
+TEST_F(MySQLTerminalFitlerTest, ConnectOkAndPoolReady) { connectOkAndPoolReady(); }
 
 TEST_F(MySQLTerminalFitlerTest, GreetThenSslUpgrade) {
-  setup();
   connectOkAndPoolReady();
   serverSendGreet();
   clientSendSsl();
-  teardown();
 }
 
 TEST_F(MySQLTerminalFitlerTest, GreetThenResponse) {
-  setup();
   connectOkAndPoolReady();
   serverSendGreet();
   clientSendHandShakeReponse();
-  teardown();
 }
 
 TEST_F(MySQLTerminalFitlerTest, GreetThenLoginThenOk) {
-  setup();
   connectOkAndPoolReady();
   serverSendGreet();
   clientSendHandShakeReponse();
   serverSendOk();
-  teardown();
 }
 
 TEST_F(MySQLTerminalFitlerTest, GreeThenLoginThenError) {
-  setup();
   connectOkAndPoolReady();
   serverSendGreet();
   clientSendHandShakeReponse();
   serverSendError();
-  teardown();
 }
 
 TEST_F(MySQLTerminalFitlerTest, GreeThenLoginThenAuthSwitchThenError) {
-  setup();
-  testing::Sequence seq;
   connectOkAndPoolReady();
   serverSendGreet();
   clientSendHandShakeReponse();
   serverSendAuthSwitch();
   clientSendAuthSwitchResponse();
   serverSendClientSwitchError();
-  teardown();
 }
 
 // pending
 TEST_F(MySQLTerminalFitlerTest, GreeThenLoginThenAuthSwitchThenMore) {
-  setup();
-  testing::Sequence seq;
   connectOkAndPoolReady();
   serverSendGreet();
   clientSendHandShakeReponse();
   serverSendAuthSwitch();
   clientSendAuthSwitchResponse();
   serverSendClientSwitchMore();
-  teardown();
 }
 
 TEST_F(MySQLTerminalFitlerTest, GreeThenLoginThenAuthSwitchThenSwitch) {
-  setup();
-  testing::Sequence seq;
   connectOkAndPoolReady();
   serverSendGreet();
   clientSendHandShakeReponse();
   serverSendAuthSwitch();
   clientSendAuthSwitchResponse();
   serverSendClientSwitchSwitch();
-  teardown();
 }
 
 TEST_F(MySQLTerminalFitlerTest, GreeThenLoginThenAuthSwitchThenOkThenQueryThenResult) {
-  setup();
-  testing::Sequence seq;
   connectOkAndPoolReady();
   serverSendGreet();
   clientSendHandShakeReponse();
@@ -839,12 +791,9 @@ TEST_F(MySQLTerminalFitlerTest, GreeThenLoginThenAuthSwitchThenOkThenQueryThenRe
   serverSendClientSwitchOk();
   clientSendQuery();
   serverSendCommandResponse();
-  teardown();
 }
 
 TEST_F(MySQLTerminalFitlerTest, GreeThenLoginThenAuthSwitchThenOkThenQuit) {
-  setup();
-  testing::Sequence seq;
   connectOkAndPoolReady();
   serverSendGreet();
   clientSendHandShakeReponse();
@@ -852,12 +801,9 @@ TEST_F(MySQLTerminalFitlerTest, GreeThenLoginThenAuthSwitchThenOkThenQuit) {
   clientSendAuthSwitchResponse();
   serverSendClientSwitchOk();
   clientSendQuit();
-  teardown();
 }
 
 TEST_F(MySQLTerminalFitlerTest, GreeThenLoginThenAuthSwitchThenOkThenInvalidQuery) {
-  setup();
-  testing::Sequence seq;
   connectOkAndPoolReady();
   serverSendGreet();
   clientSendHandShakeReponse();
@@ -865,7 +811,6 @@ TEST_F(MySQLTerminalFitlerTest, GreeThenLoginThenAuthSwitchThenOkThenInvalidQuer
   clientSendAuthSwitchResponse();
   serverSendClientSwitchOk();
   clientSendInvalidQuery();
-  teardown();
 }
 } // namespace MySQLProxy
 } // namespace NetworkFilters

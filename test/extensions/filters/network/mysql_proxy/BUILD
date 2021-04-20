@@ -37,7 +37,7 @@ envoy_extension_cc_test_library(
 )
 
 envoy_extension_cc_test(
-    name = "mysql_codec_tests",
+    name = "mysql_codec_test",
     srcs = [
         "mysql_codec_test.cc",
     ],
@@ -48,7 +48,7 @@ envoy_extension_cc_test(
 )
 
 envoy_extension_cc_test(
-    name = "mysql_greet_tests",
+    name = "mysql_greet_test",
     srcs = [
         "mysql_greet_test.cc",
     ],
@@ -59,7 +59,7 @@ envoy_extension_cc_test(
 )
 
 envoy_extension_cc_test(
-    name = "mysql_auth_switch_resp_tests",
+    name = "mysql_auth_switch_resp_test",
     srcs = [
         "mysql_auth_switch_resp_test.cc",
     ],
@@ -70,7 +70,7 @@ envoy_extension_cc_test(
 )
 
 envoy_extension_cc_test(
-    name = "mysql_clogin_tests",
+    name = "mysql_clogin_test",
     srcs = [
         "mysql_clogin_test.cc",
     ],
@@ -92,7 +92,7 @@ envoy_extension_cc_test(
 )
 
 envoy_extension_cc_test(
-    name = "filter_tests",
+    name = "mysql_terminal_filter_test",
     srcs = [
         "mysql_terminal_filter_test.cc",
     ],
@@ -109,45 +109,26 @@ envoy_extension_cc_test(
     ],
 )
 
-# envoy_extension_cc_test(
-#     name = "mysql_filter_tests",
-#     srcs = [
-#         "mysql_filter_test.cc",
-#     ],
-#     extension_name = "envoy.filters.network.mysql_proxy",
-#     deps = [
-#         ":mysql_test_utils_lib",
-#         "//source/extensions/filters/network/mysql_proxy:config",
-#         "//test/mocks/network:network_mocks",
-#     ],
-# )
-
-# envoy_extension_cc_test(
-#     name = "mysql_integration_test",
-#     srcs = [
-#         "mysql_integration_test.cc",
-#     ],
-#     data = [
-#         "mysql_test_config.yaml",
-#     ],
-#     extension_name = "envoy.filters.network.mysql_proxy",
-#     deps = [
-#         ":mysql_test_utils_lib",
-#         "//source/common/tcp_proxy",
-#         "//source/extensions/filters/network/mysql_proxy:codec_lib",
-#         "//source/extensions/filters/network/mysql_proxy:config",
-#         "//source/extensions/filters/network/tcp_proxy:config",
-#         "//test/integration:integration_lib",
-#     ],
-# )
+envoy_extension_cc_test(
+    name = "mysql_filter_test",
+    srcs = [
+        "mysql_filter_test.cc",
+    ],
+    extension_name = "envoy.filters.network.mysql_proxy",
+    deps = [
+        ":mysql_test_utils_lib",
+        "//source/extensions/filters/network/mysql_proxy:filter_lib",
+        "//test/mocks/network:network_mocks",
+    ],
+)
 
 envoy_extension_cc_test(
-    name = "mysql_terminal_integration_test",
+    name = "mysql_integration_test",
     srcs = [
-        "mysql_terminal_integration_test.cc",
+        "mysql_integration_test.cc",
     ],
     data = [
-        "mysql_test_config_terminal.yaml",
+        "mysql_test_config.yaml",
     ],
     extension_name = "envoy.filters.network.mysql_proxy",
     deps = [
@@ -160,24 +141,24 @@ envoy_extension_cc_test(
     ],
 )
 
-# envoy_extension_cc_test(
-#     name = "integration_tests",
-#     srcs = [
-#         "integration_test.cc",
-#     ],
-#     data = [
-#         "mysql_test_config_auth.yaml",
-#     ],
-#     extension_name = "envoy.filters.network.mysql_proxy",
-#     deps = [
-#         ":mysql_test_utils_lib",
-#         "//source/common/tcp_proxy",
-#         "//source/extensions/filters/network/mysql_proxy:codec_lib",
-#         "//source/extensions/filters/network/mysql_proxy:config",
-#         "//source/extensions/filters/network/tcp_proxy:config",
-#         "//test/integration:integration_lib",
-#     ],
-# )
+envoy_extension_cc_test(
+    name = "mysql_terminal_integration_test",
+    srcs = [
+        "mysql_terminal_integration_test.cc",
+    ],
+    data = [
+        "mysql_test_terminal_config.yaml",
+    ],
+    extension_name = "envoy.filters.network.mysql_proxy",
+    deps = [
+        ":mysql_test_utils_lib",
+        "//source/common/tcp_proxy",
+        "//source/extensions/filters/network/mysql_proxy:codec_lib",
+        "//source/extensions/filters/network/mysql_proxy:config",
+        "//source/extensions/filters/network/tcp_proxy:config",
+        "//test/integration:integration_lib",
+    ],
+)
 
 envoy_extension_cc_test(
     name = "mysql_route_test",
@@ -195,7 +176,7 @@ envoy_extension_cc_test(
 )
 
 envoy_extension_cc_test(
-    name = "mysql_command_tests",
+    name = "mysql_command_test",
     srcs = [
         "mysql_command_test.cc",
     ],

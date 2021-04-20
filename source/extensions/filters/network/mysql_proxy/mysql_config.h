@@ -21,9 +21,14 @@ class MySQLConfigFactory
           envoy::extensions::filters::network::mysql_proxy::v3::MySQLProxy,
           envoy::extensions::filters::network::mysql_proxy::v3::MySQLProtocolOptions> {
 public:
-  MySQLConfigFactory() : FactoryBase(NetworkFilterNames::get().MySQLProxy, true) {}
+  MySQLConfigFactory() : FactoryBase(NetworkFilterNames::get().MySQLProxy) {}
 
 private:
+  bool isTerminalFilterByProtoTyped(
+      const envoy::extensions::filters::network::mysql_proxy::v3::MySQLProxy& proto_config,
+      Server::Configuration::FactoryContext&) override {
+    return proto_config.enable_manage_protocol();
+  }
   Network::FilterFactoryCb createFilterFactoryFromProtoTyped(
       const envoy::extensions::filters::network::mysql_proxy::v3::MySQLProxy& proto_config,
       Server::Configuration::FactoryContext& context) override;
