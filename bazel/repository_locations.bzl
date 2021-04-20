@@ -65,11 +65,11 @@ REPOSITORY_LOCATIONS_SPEC = dict(
         project_name = "envoy-build-tools",
         project_desc = "Common build tools shared by the Envoy/UDPA ecosystem",
         project_url = "https://github.com/envoyproxy/envoy-build-tools",
-        version = "d36336060aa1ade024654dec009adc4a19e3efd6",
-        sha256 = "7b379e69eafb883cebb52a5ed11b1a12710dd77a33de79c0bc207f6458a5f712",
+        version = "50ea97bb4289441f4f87537e8c145ffb79b1c9ba",
+        sha256 = "3c905c71e9f2f29f4c24d9e980c95a45c73510e10b9baa6199e3fa4acfafba5e",
         strip_prefix = "envoy-build-tools-{version}",
         urls = ["https://github.com/envoyproxy/envoy-build-tools/archive/{version}.tar.gz"],
-        release_date = "2021-01-28",
+        release_date = "2021-04-14",
         use_category = ["build"],
     ),
     boringssl = dict(
@@ -768,14 +768,14 @@ REPOSITORY_LOCATIONS_SPEC = dict(
         project_name = "V8",
         project_desc = "Google’s open source high-performance JavaScript and WebAssembly engine, written in C++",
         project_url = "https://v8.dev",
-        version = "9.0.257.13",
+        version = "9.0.257.17",
         # This archive was created using https://storage.googleapis.com/envoyproxy-wee8/wee8-archive.sh
         # and contains complete checkout of V8 with all dependencies necessary to build wee8.
-        sha256 = "163e592a9e75da8e561b498861c2d13e653f4d39aed51e0eff9f4d5ff60c8a37",
+        sha256 = "0eaf060eae4907f7d961fc31b0692175003f56cee320c7e4da4d19b47c2557f3",
         urls = ["https://storage.googleapis.com/envoyproxy-wee8/wee8-{version}.tar.gz"],
         use_category = ["dataplane_ext"],
         extensions = ["envoy.wasm.runtime.v8"],
-        release_date = "2021-03-16",
+        release_date = "2021-04-12",
         cpe = "cpe:2.3:a:google:v8:*",
     ),
     com_googlesource_quiche = dict(
