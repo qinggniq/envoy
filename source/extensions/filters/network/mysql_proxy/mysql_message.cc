@@ -116,6 +116,10 @@ ErrMessage MessageHelper::dbError(const std::string& db) {
                    fmt::format("Unknown database {}", db));
 }
 
+ErrMessage MessageHelper::defaultError(std::string&& msg) {
+  return encodeErr(ER_UNKNOWN_ERROR, MYSQL_SQL_STATE_MARKER, "HY000", std::move(msg));
+}
+
 ClientSwitchResponse MessageHelper::encodeSwithResponse(const std::vector<uint8_t>& auth_resp) {
   ClientSwitchResponse resp;
   resp.setAuthPluginResp(auth_resp);

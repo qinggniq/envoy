@@ -9,6 +9,7 @@
 #include "envoy/network/filter.h"
 #include "envoy/tcp/conn_pool.h"
 
+#include "mysql_codec.h"
 #include "source/common/buffer/buffer_impl.h"
 #include "source/common/common/logger.h"
 #include "source/extensions/filters/network/mysql_proxy/mysql_decoder.h"
@@ -56,7 +57,8 @@ public:
   void stepLocalSession(uint8_t expected_seq, MySQLSession::State expected_state);
   void stepRemoteSession(uint8_t expected_seq, MySQLSession::State expected_state);
   void onFailure(const ErrMessage& err);
-  void initUpstreamAuthInfo(Upstream::ThreadLocalCluster* cluster, const std::string& db);
+  void onFailure(ErrMessage& err, uint8_t seq);
+  void initUpstreamAuthInfo(Upstream::ThreadLocalCluster* cluster);
   void initDownstreamAuthInfo(const std::string& username, const std::string& password);
   struct DownstreamEventHandler : public DecoderCallbacks {
     DownstreamEventHandler(MySQLTerminalFilter& filter);
@@ -75,12 +77,15 @@ public:
     absl::optional<ErrMessage> checkAuth(const std::string& username,
                                          const std::vector<uint8_t>& login,
                                          const std::vector<uint8_t>& expect_sig);
-    void onAuthSucc(const OkMessage& ok);
+    void tryConnectUpstream(uint8_t seq);
+
+    void onAuthSucc();
 
     MySQLTerminalFilter& parent;
     DecoderPtr decoder;
     Buffer::OwnedImpl buffer;
     std::vector<uint8_t> seed;
+    absl::optional<OkMessage> pending_response;
   };
   using DownstreamEventHandlerPtr = std::unique_ptr<DownstreamEventHandler>;
 
